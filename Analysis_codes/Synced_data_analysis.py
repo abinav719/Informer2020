@@ -26,8 +26,8 @@ dataset.reset_index(drop=True, inplace=True)
 #Code to experiment for a mapper value between INS velocity and Speedometer
 vel_z_extreme = dataset["ins_vel_hor_z"].agg(['min', 'max']) #During turn and acceleration there is velocity across z axis as well due to roll pitch
 speedo_extreme = dataset["speedo_obd"].agg(['min', 'max'])
-#dataset["ins_vel"] = np.sqrt(dataset["ins_vel_hor_z"]**2 +  dataset["ins_vel_hor_x"]**2 + dataset["ins_vel_hor_y"]**2)
-dataset["ins_vel"] = np.sqrt(dataset["ins_vel_hor_x"]**2 + dataset["ins_vel_hor_y"]**2)
+dataset["ins_vel"] = np.sqrt(dataset["ins_vel_hor_z"]**2 +  dataset["ins_vel_hor_x"]**2 + dataset["ins_vel_hor_y"]**2)
+#dataset["ins_vel"] = np.sqrt(dataset["ins_vel_hor_x"]**2 + dataset["ins_vel_hor_y"]**2) #Need to know which is correct
 ins_vel_extreme = dataset["ins_vel"].agg(['min', 'max'])
 print(vel_z_extreme,speedo_extreme,ins_vel_extreme)
 
@@ -109,96 +109,160 @@ plt.ylabel('Average Error')
 plt.legend()
 plt.show()
 
-
-#Speedo_OBD_created vs ADMA generated time plot requiestes are derived here
-speedo_data_rostime = dataset[["speedo_obd", "rostimestamp_speedo"]].copy(deep=True)
-speedo_data_rostime["rostimestamp_speedo"] = (speedo_data_rostime["rostimestamp_speedo"] / (10**9))
-speedo_data_rostime.dropna(subset=['rostimestamp_speedo'], inplace=True)
-tolerance_time = .01
-speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_AG_OBDc", 'rostimestamp_speedo':'rostimestamp_speedo_v2'})#v1 is alrady in dataset
-speedo_data_rostime["sync_timer_sec"] = speedo_data_rostime['rostimestamp_speedo_v2']
-
-#pd.merge requires sorted columns for efficient implementation.
-dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
-speedo_data_rostime.sort_values("sync_timer_sec", inplace=True)
-dataset = pd.merge_asof(dataset,speedo_data_rostime, on="sync_timer_sec", direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
-duplicates_mask = dataset.duplicated(subset='rostimestamp_speedo_v2', keep='first')
-# duplicates from df2 with NaN in the merged DataFrame
-dataset.loc[duplicates_mask, 'rostimestamp_speedo_v2'] = np.nan
-dataset.loc[duplicates_mask, "speedo_obd_AG_OBDc"] = np.nan
-#condition = (dataset["speedo_obd_AG_OBDc"] >= 4094) & (dataset['status_standstill'] == 1)
-#columns_to_update = ['speedo_obd_rostime']
-#dataset.loc[condition, columns_to_update] = 0
-speedo_obd_rostime_index = dataset["speedo_obd_AG_OBDc"].notna()
-dataset["Diff_vel_AG_OBDc"] = (dataset["speedo_obd_AG_OBDc"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs()
-dataset['Speedo_bins_AG_OBDc'] = pd.cut(dataset['speedo_obd_AG_OBDc'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
-avg_velerror_groups_Speedo_bins_AG_OBDc = dataset.groupby('Speedo_bins_AG_OBDc')["Diff_vel_AG_OBDc"].mean()
-
-
-
-#Speedo_OBD_created vs ADMA scaled time plot requiestes are derived here
-speedo_data_rostime = dataset[["speedo_obd", "rostimestamp_speedo"]].copy(deep=True)
-speedo_data_rostime.dropna(subset=['rostimestamp_speedo'], inplace=True)
-tolerance_time = 10**7
-speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_AS_OBDc", 'rostimestamp_speedo':'rostimestamp_speedo_v3'})#v1 is alrady in dataset
-speedo_data_rostime["rosbagTimestamp_ADMA"] = speedo_data_rostime["rostimestamp_speedo_v3"].astype(int)
-#pd.merge requires sorted columns for efficient implementation.
-dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
-speedo_data_rostime.sort_values("rosbagTimestamp_ADMA", inplace=True)
-dataset = pd.merge_asof(dataset,speedo_data_rostime, on="rosbagTimestamp_ADMA", direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
-duplicates_mask = dataset.duplicated(subset='rostimestamp_speedo_v3', keep='first')
-# duplicates from df2 with NaN in the merged DataFrame
-dataset.loc[duplicates_mask, 'rostimestamp_speedo_v3'] = np.nan
-dataset.loc[duplicates_mask, "speedo_obd_AS_OBDc"] = np.nan
-#condition = (dataset["speedo_obd_AG_OBDc"] >= 4094) & (dataset['status_standstill'] == 1)
-#columns_to_update = ['speedo_obd_rostime']
-#dataset.loc[condition, columns_to_update] = 0
-speedo_obd_rostime_index = dataset["speedo_obd_AS_OBDc"].notna()
-dataset["Diff_vel_AS_OBDc"] = (dataset["speedo_obd_AS_OBDc"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs()
-dataset['Speedo_bins_AS_OBDc'] = pd.cut(dataset['speedo_obd_AS_OBDc'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
-avg_velerror_groups_Speedo_bins_AS_OBDc = dataset.groupby('Speedo_bins_AS_OBDc')["Diff_vel_AS_OBDc"].mean()
-
-
-
-
-
-
-#Speedo OBD_received with ADMA robag time stamp. The purspose is to check the synchronization issues with Alberto paper.
-speedo_data_rostime = dataset[["speedo_obd", "speedo_OBDtime_sec"]].copy(deep=True)
-speedo_data_rostime["speedo_OBDtime_sec"] = (speedo_data_rostime["speedo_OBDtime_sec"] * (10**9))
-speedo_data_rostime.dropna(subset=['speedo_OBDtime_sec'], inplace=True)
-tolerance_time = 10**7
-speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_rostime", 'speedo_OBDtime_sec':"speedo_OBDtime_sec_rostime"})
-speedo_data_rostime["rosbagTimestamp_ADMA"] = speedo_data_rostime["speedo_OBDtime_sec_rostime"]
-dataset["rosbagTimestamp_ADMA"] = dataset["rosbagTimestamp_ADMA"].astype(float)
-#pd.merge requires sorted columns for efficient implementation. Need to
-dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
-speedo_data_rostime.sort_values('rosbagTimestamp_ADMA', inplace=True)
-dataset = pd.merge_asof(dataset,speedo_data_rostime, on='rosbagTimestamp_ADMA', direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
-duplicates_mask =dataset.duplicated(subset="speedo_OBDtime_sec_rostime", keep='first')
-# duplicates from df2 with NaN in the merged DataFrame
-dataset.loc[duplicates_mask, 'speedo_OBDtime_sec_rostime'] = np.nan
-dataset.loc[duplicates_mask, 'speedo_obd_rostime'] = np.nan
-condition = (dataset['speedo_OBDtime_sec_rostime'] >= 4094) & (dataset['status_standstill'] == 1)
-columns_to_update = ['speedo_obd_rostime']
-dataset.loc[condition, columns_to_update] = 0
-speedo_obd_rostime_index = dataset["speedo_obd_rostime"].notna()
-dataset["Diff_vel_rostime"] = (dataset["speedo_obd_rostime"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs() #ataset["speedo_obd"][speedo_index] - dataset["ins_vel_kmph"]
-dataset['Speedo_bins_rostime'] = pd.cut(dataset['speedo_obd_rostime'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
-avg_velerror_groups_rostime = dataset.groupby('Speedo_bins_rostime')["Diff_vel_rostime"].mean()
+#Code to compute vehicle velocity from tires and use the data to compute graphs
+dataset['speed_tires'] = (dataset["VelFR_obd"]+dataset["VelFL_obd"]+dataset["VelRR_obd"]+dataset["VelRL_obd"])/4
+tirevel_obd_rostime_index = dataset["speed_tires"].notna()
+dataset['Diff_tires_adma'] = (dataset["speed_tires"][tirevel_obd_rostime_index] - dataset["ins_vel_kmph"]).abs()
+dataset['speed_tires_bins'] = pd.cut(dataset['speed_tires'][tirevel_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
+avg_velerror_groups_tire_Speedo_bins_AG_OBDc = dataset.groupby('speed_tires_bins')["Diff_tires_adma"].mean()
 fig, ax = plt.subplots(figsize=(10, 6))
-bar_width = 0.2
-bar_positions = range(len(avg_velerror_groups))
-plt.bar([pos - 1.5*bar_width for pos in bar_positions], avg_velerror_groups, bar_width, label='AG_OR')
-plt.bar([pos - 0.5*bar_width for pos in bar_positions], avg_velerror_groups_rostime, bar_width, label='AS_OR', color='orange')
-plt.bar([pos + 0.5*bar_width for pos in bar_positions], avg_velerror_groups_Speedo_bins_AS_OBDc, bar_width, label='AS_OC', color='green')
-plt.bar([pos + 1.5*bar_width for pos in bar_positions], avg_velerror_groups_Speedo_bins_AG_OBDc, bar_width, label='AG_OC', color='red')
+bar_width = 0.35
+bar_positions = range(len(avg_velerror_groups_tire_Speedo_bins_AG_OBDc ))
+ax.bar([pos - bar_width/2 for pos in bar_positions], avg_velerror_groups, bar_width, label='Vel Error speedo')
+ax.bar([pos + bar_width/2 for pos in bar_positions], avg_velerror_groups_tire_Speedo_bins_AG_OBDc, bar_width, label='Vel error tires', color='orange')
 ax.set_xticks(bar_positions)
 ax.set_xticklabels([i for i in range(5,106,5)], fontsize=7)
-plt.xlabel('Speedo Bins')
+plt.xlabel('Speed Bins')
 plt.ylabel('Average Error')
 plt.legend()
 plt.show()
+
+#Steering, acceleration_y , pedal acceleration , brake , yaw rate, speedo , velocity of tires.
+#Steering data
+steering_extreme = dataset["SW_pos_obd"].agg(['min', 'max'])
+steering_obd_rostime_index = dataset['SW_pos_obd'].notna()
+dataset['Steering_bins'] = pd.cut(dataset['SW_pos_obd'][steering_obd_rostime_index], bins = [i for i in range(-640,640,20)], include_lowest=True, right= False)
+relative_freq = dataset['Steering_bins'].value_counts(normalize=True)
+relative_freq.sort_index().plot(kind='bar', width=1.0, edgecolor='black')
+plt.title('Relative Frequency Histogram of Steering Bins')
+plt.xlabel('Steering Bins')
+plt.ylabel('Relative Frequency')
+plt.show()
+
+# acceleration_y
+latacceleration_extreme = dataset["LatAcc_obd"].agg(['min', 'max'])
+latacc_obd_rostime_index = dataset["LatAcc_obd"].notna()
+dataset['Latacc_bins'] = pd.cut(dataset["LatAcc_obd"][latacc_obd_rostime_index], bins = [i for i in range(-12,12,1)], include_lowest=True, right= False)
+relative_freq = dataset['Latacc_bins'].value_counts(normalize=True)
+relative_freq.sort_index().plot(kind='bar', width=1.0, edgecolor='black')
+plt.title('Relative Frequency Histogram of Lateral acceleration')
+plt.xlabel('Lateral Acceleration')
+plt.ylabel('Relative Frequency')
+plt.show()
+
+#Acceleration_pedal
+accelerationpedal_extreme = dataset["acc_input%_obd"].agg(['min', 'max'])
+accpedal_obd_rostime_index = dataset["acc_input%_obd"].notna()
+dataset['accpedal_bins'] = pd.cut(dataset["acc_input%_obd"][accpedal_obd_rostime_index ], bins = [i for i in range(0,100,5)], include_lowest=True, right= False)
+relative_freq = dataset['accpedal_bins'].value_counts(normalize=True)
+relative_freq.sort_index().plot(kind='bar', width=1.0, edgecolor='black')
+plt.title('Relative Frequency Acceleration Pedal')
+plt.xlabel('Acceleration pedal %')
+plt.ylabel('Relative Frequency')
+plt.show()
+
+#Brake Pressure
+brakepedal_extreme = dataset["brake_pressure_obd"].agg(['min', 'max'])
+brakepressure_obd_rostime_index = dataset["brake_pressure_obd"].notna()
+dataset['brakepressure_bins'] = pd.cut(dataset["brake_pressure_obd"][brakepressure_obd_rostime_index], bins = [i for i in range(0,200,10)], include_lowest=True, right= False)
+relative_freq = dataset['brakepressure_bins'].value_counts(normalize=True)
+relative_freq.sort_index().plot(kind='bar', width=1.0, edgecolor='black')
+plt.title('Relative Frequency Brake Pressure')
+plt.xlabel('Brake Pressure')
+plt.ylabel('Relative Frequency')
+plt.show()
+
+
+
+# #Speedo_OBD_created vs ADMA generated time plot requiestes are derived here
+# speedo_data_rostime = dataset[["speedo_obd", "rostimestamp_speedo"]].copy(deep=True)
+# speedo_data_rostime["rostimestamp_speedo"] = (speedo_data_rostime["rostimestamp_speedo"] / (10**9))
+# speedo_data_rostime.dropna(subset=['rostimestamp_speedo'], inplace=True)
+# tolerance_time = .01
+# speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_AG_OBDc", 'rostimestamp_speedo':'rostimestamp_speedo_v2'})#v1 is alrady in dataset
+# speedo_data_rostime["sync_timer_sec"] = speedo_data_rostime['rostimestamp_speedo_v2']
+#
+# #pd.merge requires sorted columns for efficient implementation.
+# dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
+# speedo_data_rostime.sort_values("sync_timer_sec", inplace=True)
+# dataset = pd.merge_asof(dataset,speedo_data_rostime, on="sync_timer_sec", direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
+# duplicates_mask = dataset.duplicated(subset='rostimestamp_speedo_v2', keep='first')
+# # duplicates from df2 with NaN in the merged DataFrame
+# dataset.loc[duplicates_mask, 'rostimestamp_speedo_v2'] = np.nan
+# dataset.loc[duplicates_mask, "speedo_obd_AG_OBDc"] = np.nan
+# #condition = (dataset["speedo_obd_AG_OBDc"] >= 4094) & (dataset['status_standstill'] == 1)
+# #columns_to_update = ['speedo_obd_rostime']
+# #dataset.loc[condition, columns_to_update] = 0
+# speedo_obd_rostime_index = dataset["speedo_obd_AG_OBDc"].notna()
+# dataset["Diff_vel_AG_OBDc"] = (dataset["speedo_obd_AG_OBDc"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs()
+# dataset['Speedo_bins_AG_OBDc'] = pd.cut(dataset['speedo_obd_AG_OBDc'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
+# avg_velerror_groups_Speedo_bins_AG_OBDc = dataset.groupby('Speedo_bins_AG_OBDc')["Diff_vel_AG_OBDc"].mean()
+#
+#
+#
+# #Speedo_OBD_created vs ADMA scaled time plot requiestes are derived here
+# speedo_data_rostime = dataset[["speedo_obd", "rostimestamp_speedo"]].copy(deep=True)
+# speedo_data_rostime.dropna(subset=['rostimestamp_speedo'], inplace=True)
+# tolerance_time = 10**7
+# speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_AS_OBDc", 'rostimestamp_speedo':'rostimestamp_speedo_v3'})#v1 is alrady in dataset
+# speedo_data_rostime["rosbagTimestamp_ADMA"] = speedo_data_rostime["rostimestamp_speedo_v3"].astype(int)
+# #pd.merge requires sorted columns for efficient implementation.
+# dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
+# speedo_data_rostime.sort_values("rosbagTimestamp_ADMA", inplace=True)
+# dataset = pd.merge_asof(dataset,speedo_data_rostime, on="rosbagTimestamp_ADMA", direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
+# duplicates_mask = dataset.duplicated(subset='rostimestamp_speedo_v3', keep='first')
+# # duplicates from df2 with NaN in the merged DataFrame
+# dataset.loc[duplicates_mask, 'rostimestamp_speedo_v3'] = np.nan
+# dataset.loc[duplicates_mask, "speedo_obd_AS_OBDc"] = np.nan
+# #condition = (dataset["speedo_obd_AG_OBDc"] >= 4094) & (dataset['status_standstill'] == 1)
+# #columns_to_update = ['speedo_obd_rostime']
+# #dataset.loc[condition, columns_to_update] = 0
+# speedo_obd_rostime_index = dataset["speedo_obd_AS_OBDc"].notna()
+# dataset["Diff_vel_AS_OBDc"] = (dataset["speedo_obd_AS_OBDc"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs()
+# dataset['Speedo_bins_AS_OBDc'] = pd.cut(dataset['speedo_obd_AS_OBDc'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
+# avg_velerror_groups_Speedo_bins_AS_OBDc = dataset.groupby('Speedo_bins_AS_OBDc')["Diff_vel_AS_OBDc"].mean()
+#
+#
+#
+#
+#
+#
+# #Speedo OBD_received with ADMA robag time stamp. The purspose is to check the synchronization issues with Alberto paper.
+# speedo_data_rostime = dataset[["speedo_obd", "speedo_OBDtime_sec"]].copy(deep=True)
+# speedo_data_rostime["speedo_OBDtime_sec"] = (speedo_data_rostime["speedo_OBDtime_sec"] * (10**9))
+# speedo_data_rostime.dropna(subset=['speedo_OBDtime_sec'], inplace=True)
+# tolerance_time = 10**7
+# speedo_data_rostime=speedo_data_rostime.rename(columns={"speedo_obd": "speedo_obd_rostime", 'speedo_OBDtime_sec':"speedo_OBDtime_sec_rostime"})
+# speedo_data_rostime["rosbagTimestamp_ADMA"] = speedo_data_rostime["speedo_OBDtime_sec_rostime"]
+# dataset["rosbagTimestamp_ADMA"] = dataset["rosbagTimestamp_ADMA"].astype(float)
+# #pd.merge requires sorted columns for efficient implementation. Need to
+# dataset.sort_values('rosbagTimestamp_ADMA', inplace=True)
+# speedo_data_rostime.sort_values('rosbagTimestamp_ADMA', inplace=True)
+# dataset = pd.merge_asof(dataset,speedo_data_rostime, on='rosbagTimestamp_ADMA', direction='nearest', allow_exact_matches=True, tolerance=tolerance_time)
+# duplicates_mask =dataset.duplicated(subset="speedo_OBDtime_sec_rostime", keep='first')
+# # duplicates from df2 with NaN in the merged DataFrame
+# dataset.loc[duplicates_mask, 'speedo_OBDtime_sec_rostime'] = np.nan
+# dataset.loc[duplicates_mask, 'speedo_obd_rostime'] = np.nan
+# condition = (dataset['speedo_OBDtime_sec_rostime'] >= 4094) & (dataset['status_standstill'] == 1)
+# columns_to_update = ['speedo_obd_rostime']
+# dataset.loc[condition, columns_to_update] = 0
+# speedo_obd_rostime_index = dataset["speedo_obd_rostime"].notna()
+# dataset["Diff_vel_rostime"] = (dataset["speedo_obd_rostime"][speedo_obd_rostime_index] - dataset["ins_vel_kmph"]).abs() #ataset["speedo_obd"][speedo_index] - dataset["ins_vel_kmph"]
+# dataset['Speedo_bins_rostime'] = pd.cut(dataset['speedo_obd_rostime'][speedo_obd_rostime_index], bins = [i for i in range(0,101,5)], include_lowest=True, right= False)
+# avg_velerror_groups_rostime = dataset.groupby('Speedo_bins_rostime')["Diff_vel_rostime"].mean()
+# fig, ax = plt.subplots(figsize=(10, 6))
+# bar_width = 0.2
+# bar_positions = range(len(avg_velerror_groups))
+# plt.bar([pos - 1.5*bar_width for pos in bar_positions], avg_velerror_groups, bar_width, label='AG_OR')
+# plt.bar([pos - 0.5*bar_width for pos in bar_positions], avg_velerror_groups_rostime, bar_width, label='AS_OR', color='orange')
+# plt.bar([pos + 0.5*bar_width for pos in bar_positions], avg_velerror_groups_Speedo_bins_AS_OBDc, bar_width, label='AS_OC', color='green')
+# plt.bar([pos + 1.5*bar_width for pos in bar_positions], avg_velerror_groups_Speedo_bins_AG_OBDc, bar_width, label='AG_OC', color='red')
+# ax.set_xticks(bar_positions)
+# ax.set_xticklabels([i for i in range(5,106,5)], fontsize=7)
+# plt.xlabel('Speedo Bins')
+# plt.ylabel('Average Error')
+# plt.legend()
+# plt.show()
 
 
 

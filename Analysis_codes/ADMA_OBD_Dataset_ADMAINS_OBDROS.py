@@ -28,13 +28,12 @@ import os
 # rosbag_name = parsed_args.rosbag
 
 dataset_location = 'Data_set_unzipped'
-#rosbag_names = os.listdir(dataset_location)
-rosbag_names = ['Time_corrected_2024-04-18-17-29-57']  #to make individual files
+rosbag_names = os.listdir(dataset_location)
+
 #For loop implemented to process multiple files at once.
 for rosbag_name in rosbag_names:
     print(rosbag_name)
     adma_scaled = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_adma_slash_data_scaled.csv")
-
 
     # Code to find the simulation duration from Rosbag Time stamps
     #We are converting the time from unix (Nano secs) format to date time format
@@ -100,7 +99,7 @@ for rosbag_name in rosbag_names:
 
 
     ##Data extraction from CSV files of OBD data with closest associated time stamps (10 Milliseconds)
-    adma_extracted_doi['timestamp'] = pd.to_datetime(adma_extracted_doi['rosbagTimestamp'], unit='ns')#For time synchronization
+    #adma_extracted_doi['timestamp'] = pd.to_datetime(adma_extracted_doi['rosbagTimestamp'], unit='ns')#For time synchronization
     adma_extracted_doi = adma_extracted_doi.rename(columns={"rosbagTimestamp": "rosbagTimestamp_ADMA"})
     adma_extracted_doi["sync_timer_sec"] = adma_extracted_doi["INS_time_sec"]
     tolerance_time = pd.Timedelta(milliseconds=10)
@@ -133,14 +132,14 @@ for rosbag_name in rosbag_names:
 
 
     #input acceleration synchronization
-    # obd_data_accinput = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_ams_accel_input.csv")
-    # obd_data_accinput['accinput_OBDtime_sec'] = obd_data_accinput["secs"]+ ((obd_data_accinput['nsecs'])/10**9)
-    # obd_data_accinput['sync_timer_sec'] = obd_data_accinput['accinput_OBDtime_sec']
-    # obd_data_accinput = obd_data_accinput.drop(columns=['timestampAmsAccelInput', 'secs',"nsecs","rosbagTimestamp"])
-    # merged_df = pd.merge_asof(merged_df, obd_data_accinput, on='sync_timer_sec', direction='forward', allow_exact_matches=False, tolerance=.010)
-    # duplicates_mask = merged_df.duplicated(subset='accinput_OBDtime_sec', keep='first')
-    # merged_df.loc[duplicates_mask, 'accinput_OBDtime_sec'] = np.nan
-    # merged_df.loc[duplicates_mask, 'ams_accel_input_Percent'] = np.nan
+    obd_data_accinput = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_ams_accel_input.csv")
+    obd_data_accinput['accinput_OBDtime_sec'] = obd_data_accinput["secs"]+ ((obd_data_accinput['nsecs'])/10**9)
+    obd_data_accinput['sync_timer_sec'] = obd_data_accinput['accinput_OBDtime_sec']
+    obd_data_accinput = obd_data_accinput.drop(columns=['timestampAmsAccelInput', 'secs',"nsecs","rosbagTimestamp"])
+    merged_df = pd.merge_asof(merged_df, obd_data_accinput, on='sync_timer_sec', direction='forward', allow_exact_matches=False, tolerance=.010)
+    duplicates_mask = merged_df.duplicated(subset='accinput_OBDtime_sec', keep='first')
+    merged_df.loc[duplicates_mask, 'accinput_OBDtime_sec'] = np.nan
+    merged_df.loc[duplicates_mask, 'ams_accel_input_Percent'] = np.nan
 
 
     #Brake Pressure
@@ -208,47 +207,7 @@ for rosbag_name in rosbag_names:
     merged_df.loc[duplicates_mask, 'yaw_OBDtime_sec'] = np.nan
     merged_df.loc[duplicates_mask, 'GierrateDegXSec'] = np.nan
 
-    #Synchronization with ROSBag timestamps to check data latency
-
-    #Speedometer Value
-    obd_data_speedo = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_SpeedoInfo.csv")
-    obd_data_speedo['timestamp'] = pd.to_datetime(obd_data_speedo['rosbagTimestamp'], unit='ns')
-    obd_data_speedo = obd_data_speedo.drop(columns=['timestampSpeedoInDec', 'secs', "nsecs"])
-    obd_data_speedo = obd_data_speedo.rename(
-        columns={"rosbagTimestamp": "rosbagTimestamp_speedo", 'SpeedoInDec': "speedo_rostimesync"})
-    merged_df = pd.merge_asof(merged_df, obd_data_speedo , on="timestamp", direction='nearest',
-                              allow_exact_matches=False, tolerance=tolerance_time)
-    duplicates_mask = merged_df.duplicated(subset='rosbagTimestamp_speedo', keep='first')
-    # Replace duplicates from df2 with NaN in the merged DataFrame
-    merged_df.loc[duplicates_mask, 'rosbagTimestamp_speedo'] = np.nan
-    merged_df.loc[duplicates_mask, "speedo_rostimesync"] = np.nan
-
-    #Steering wheel position
-    obd_data_swpos = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_SteerWheelInfo.csv")
-    obd_data_swpos['timestamp'] = pd.to_datetime(obd_data_swpos['rosbagTimestamp'], unit='ns')
-    obd_data_swpos = obd_data_swpos.drop(columns=["timestampSWPosinDec", 'secs', "nsecs"])
-    obd_data_swpos = obd_data_swpos.rename(
-        columns={"rosbagTimestamp": "rosbagTimestamp_swpos", 'SWPosinDec': "swpos_rostimesync"})
-    merged_df = pd.merge_asof(merged_df, obd_data_swpos , on="timestamp", direction='nearest',
-                              allow_exact_matches=False, tolerance=tolerance_time)
-    duplicates_mask = merged_df.duplicated(subset='rosbagTimestamp_swpos', keep='first')
-    # Replace duplicates from df2 with NaN in the merged DataFrame
-    merged_df.loc[duplicates_mask, 'rosbagTimestamp_swpos'] = np.nan
-    merged_df.loc[duplicates_mask, "swpos_rostimesync"] = np.nan
-
-
-    #Yaw_rate input
-    obd_data_yawrateinput = pd.read_csv(f"{dataset_location}/{rosbag_name}/_slash_YawRateInfo.csv")
-    obd_data_yawrateinput['timestamp'] = pd.to_datetime(obd_data_yawrateinput['rosbagTimestamp'], unit='ns')
-    obd_data_yawrateinput = obd_data_yawrateinput.drop(columns=['timestampGierrateRohsignal','secs',"nsecs" ])
-    obd_data_yawrateinput = obd_data_yawrateinput.rename(columns={"rosbagTimestamp": "rosbagTimestamp_yaw", 'GierrateDegXSec':"Yawrate_rostimesync"})
-    merged_df = pd.merge_asof(merged_df, obd_data_yawrateinput, on="timestamp", direction='nearest', allow_exact_matches=False, tolerance=tolerance_time)
-    duplicates_mask = merged_df.duplicated(subset='rosbagTimestamp_yaw', keep='first')
-    #Replace duplicates from df2 with NaN in the merged DataFrame
-    merged_df.loc[duplicates_mask, 'rosbagTimestamp_yaw'] = np.nan
-    merged_df.loc[duplicates_mask, 'Yawrate_rostimesync'] = np.nan
-
-    merged_df = merged_df.rename(columns={"LateralAcceleration": "LatAcc_obd",  "BrakePressInDec": "brake_pressure_obd","SpeedoInDec": "speedo_obd","SWPosinDec": "SW_pos_obd","VelFRInDec": "VelFR_obd",
+    merged_df = merged_df.rename(columns={"LateralAcceleration": "LatAcc_obd", "ams_accel_input_Percent": "acc_input%_obd", "BrakePressInDec": "brake_pressure_obd","SpeedoInDec": "speedo_obd","SWPosinDec": "SW_pos_obd","VelFRInDec": "VelFR_obd",
                               "VelFLInDec": "VelFL_obd","VelRRInDec": "VelRR_obd","VelRLInDec": "VelRL_obd",
                               "GierrateDegXSec": "yaw_rate"}, errors="raise")
 
