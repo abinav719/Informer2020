@@ -1,0 +1,3 @@
+[submodule "Implemented_ML_Papers/Informer2020"]
+	path = Implemented_ML_Papers/Informer2020
+	url = https://github.com/zhouhaoyi/Informer2020.git
