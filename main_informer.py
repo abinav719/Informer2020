@@ -90,7 +90,7 @@ args.freq = args.freq[-1:]
 print('Args in experiment:')
 print(args)
 
-Exp = Exp_Informer
+Exp = Exp_Informer #Need to understand this part as this is the main import
 
 for ii in range(args.itr):
     # setting record of experiments

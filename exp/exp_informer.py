@@ -84,7 +84,7 @@ class Exp_Informer(Exp_Basic):
             root_path=args.root_path,
             data_path=args.data_path,
             flag=flag,
-            size=[args.seq_len, args.label_len, args.pred_len],
+            size=[args.seq_len, args.label_len, args.pred_len], #Refer to explanation in main_informer.py
             features=args.features,
             target=args.target,
             inverse=args.inverse,

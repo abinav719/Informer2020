@@ -103,7 +103,8 @@ class Dataset_ETT_minute(Dataset):
                  features='S', data_path='ETTm1.csv', 
                  target='OT', scale=True, inverse=False, timeenc=0, freq='t', cols=None):
         # size [seq_len, label_len, pred_len]
-        # info
+        # root_path comes from the args informer.py
+        # Scaling the input columns to have zero mean
         if size == None:
             self.seq_len = 24*4*4
             self.label_len = 24*4
@@ -133,8 +134,12 @@ class Dataset_ETT_minute(Dataset):
         df_raw = pd.read_csv(os.path.join(self.root_path,
                                           self.data_path))
 
+        #Manually they are ensuring a 60,20,20 splitup of data between train , val and test
         border1s = [0, 12*30*24*4 - self.seq_len, 12*30*24*4+4*30*24*4 - self.seq_len]
         border2s = [12*30*24*4, 12*30*24*4+4*30*24*4, 12*30*24*4+8*30*24*4]
+        # Set_type defines train,validation or test. The code is manually bifurcating the dataset.
+        # Instead of using some csv files for training and some for validation and testing
+        # This is primarily because of the fact that informer paper has one csv file for the entire dataset. It needs bifurcating
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
         
@@ -145,6 +150,7 @@ class Dataset_ETT_minute(Dataset):
             df_data = df_raw[[self.target]]
 
         if self.scale:
+            #Using standard scaler from sklearn which normalizes each column.
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
             data = self.scaler.transform(df_data.values)
@@ -153,6 +159,7 @@ class Dataset_ETT_minute(Dataset):
             
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
+        #Encoding the time features here
         data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
         
         self.data_x = data[border1:border2]
@@ -178,6 +185,11 @@ class Dataset_ETT_minute(Dataset):
 
         return seq_x, seq_y, seq_x_mark, seq_y_mark
     
+    #We are taking the datapoints at multiple intervals for the dataloader
+    #Suppose there are 100 datapoints and the sequence length is 10.
+    #Then it becomes like 100-10 = 90 sequences are possible from this.
+    #It is not like only 10*10 sequences as we can cut the time series at an increment of 1 length.
+
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
 
