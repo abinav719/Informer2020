@@ -15,6 +15,12 @@ class TimeFeature:
     def __repr__(self):
         return self.__class__.__name__ + "()"
 
+class MillisecondOfSecond(TimeFeature):
+    """Milliseconds of second encoded as value between [-0.5, 0.5]"""
+    #index.millisecond is not directly implemented in pandas so we use microseconds and convert it into milliseconds.
+    def __call__(self, index: pd.DatetimeIndex) -> np.ndarray:
+        return (index.microsecond / 999)/999 - 0.5
+
 class SecondOfMinute(TimeFeature):
     """Minute of hour encoded as value between [-0.5, 0.5]"""
     def __call__(self, index: pd.DatetimeIndex) -> np.ndarray:
@@ -87,6 +93,15 @@ def time_features_from_frequency_str(freq_str: str) -> List[TimeFeature]:
             DayOfMonth,
             DayOfYear,
         ],
+        offsets.Milli: [
+            MillisecondOfSecond,
+            SecondOfMinute,
+            MinuteOfHour,
+            HourOfDay,
+            DayOfWeek,
+            DayOfMonth,
+            DayOfYear,
+        ],
     }
 
     offset = to_offset(freq_str)
@@ -147,5 +162,8 @@ def time_features(dates, timeenc=1, freq='h'):
         }
         return dates[freq_map[freq.lower()]].values
     if timeenc==1:
-        dates = pd.to_datetime(dates.date.values)
+        if 'date' in dates.columns:
+            dates = pd.to_datetime(dates.date.values)
+        else:
+            dates = pd.to_datetime(dates.INSTimestamp_ADMA.values)
         return np.vstack([feat(dates) for feat in time_features_from_frequency_str(freq)]).transpose(1,0)
