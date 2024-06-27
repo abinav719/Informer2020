@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+#This convolutional layer is used to reduce the size in the encoder.
+#Let the input to encoder be of size 100X512.We are 1dimensional. 512 is the feature dimension and 100 is the position side.
+#Thats why we use 1d convolutional operations rather than 2D convolutions.
+#After first attention block then there is a convolutional layer
+#This convolutional layer reduces the size to half during the max pool operation. It basically cascades the input to lower size.
 class ConvLayer(nn.Module):
     def __init__(self, c_in):
         super(ConvLayer, self).__init__()
@@ -23,11 +28,14 @@ class ConvLayer(nn.Module):
         x = x.transpose(1,2)
         return x
 
+#Encoder layer consists of attention followed by two convolutions and layer normalizations
+#The convolutions are happening in the feature layer. (In transformers it was a fully connected network which makes features for next key,query,value pair)
+#Here convolutions is doing the job
 class EncoderLayer(nn.Module):
     def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
         super(EncoderLayer, self).__init__()
         d_ff = d_ff or 4*d_model
-        self.attention = attention
+        self.attention = attention #attention module explained in attention code block
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1)
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1)
         self.norm1 = nn.LayerNorm(d_model)
@@ -41,10 +49,7 @@ class EncoderLayer(nn.Module):
         #     x, x, x,
         #     attn_mask = attn_mask
         # ))
-        new_x, attn = self.attention(
-            x, x, x,
-            attn_mask = attn_mask
-        )
+        new_x, attn = self.attention(x, x, x,attn_mask = attn_mask)
         x = x + self.dropout(new_x)
 
         y = x = self.norm1(x)
@@ -77,7 +82,6 @@ class Encoder(nn.Module):
 
         if self.norm is not None:
             x = self.norm(x)
-
         return x, attns
 
 class EncoderStack(nn.Module):

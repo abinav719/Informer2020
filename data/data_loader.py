@@ -391,6 +391,102 @@ class Dataset_Pred(Dataset):
         return self.scaler.inverse_transform(data)
 
 
+class predictionDataset_OBD_ADMA(Dataset):
+    def __init__(self, root_path, flag='pred', size=None,
+                 features='S', data_path='Informer_dataset_file_firstversion.csv',
+                 target='OT', scale=True, inverse=False, timeenc=0, freq='s', cols=None):
+        # size [seq_len, label_len, pred_len]
+        if size == None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['pred']
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.inverse = inverse
+        self.timeenc = timeenc
+        self.freq = freq
+        self.cols = False #cols #Input only certain columns for the data series
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        df_raw = pd.read_csv(os.path.join(self.root_path,
+                                          self.data_path))
+        '''
+        df_raw.columns: ['date', ...(other features), target feature]
+        '''
+        # cols = list(df_raw.columns);
+        if self.cols:
+            cols = self.cols.copy()
+            cols.remove(self.target)
+        else:
+            cols = list(df_raw.columns);
+            cols.remove(self.target);
+            cols.remove('INSTimestamp_ADMA')
+            cols.remove('INS_time_sec') #Need to be removed as its duplicate of INStimestamp adma but in secs
+        df_raw = df_raw[['INSTimestamp_ADMA'] + cols + [self.target]]
+
+        border1 = len(df_raw) - self.seq_len
+        border2 = len(df_raw)
+
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df_raw.columns[1:]
+            df_data = df_raw[cols_data]
+        elif self.features == 'S':
+            df_data = df_raw[[self.target]]
+
+        if self.scale: #Need to evaluate whether we need to keep the values between -1 and 1
+            self.scaler.fit(df_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        tmp_stamp = df_raw[['INSTimestamp_ADMA']][border1:border2]
+        tmp_stamp['INSTimestamp_ADMA'] = pd.to_datetime(tmp_stamp.INSTimestamp_ADMA)
+        pred_dates = pd.date_range(tmp_stamp.INSTimestamp_ADMA.values[-1], periods=self.pred_len + 1, freq=self.freq)
+        #need to check this
+        df_stamp = pd.DataFrame(columns=['date'])
+        df_stamp.date = list(tmp_stamp.INSTimestamp_ADMA.values) + list(pred_dates[1:])
+        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq[-1:])
+
+        self.data_x = data[border1:border2]
+        if self.inverse:
+            self.data_y = df_data.values[border1:border2]
+        else:
+            self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+
+    def __getitem__(self, index):
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        if self.inverse:
+            seq_y = np.concatenate(
+                [self.data_x[r_begin:r_begin + self.label_len], self.data_y[r_begin + self.label_len:r_end]], 0)
+        else:
+            seq_y = self.data_y[r_begin:r_end]
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+        return seq_x, seq_y, seq_x_mark, seq_y_mark #mark is the time features. x is the input and y is supposed to be the prediction output
+
+    def __len__(self):
+        return len(self.data_x) - self.seq_len + 1
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
 class Dataset_OBD_ADMA(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='Informer_dataset_file_firstversion.csv',
@@ -452,7 +548,7 @@ class Dataset_OBD_ADMA(Dataset):
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
-        if self.scale:
+        if self.scale: #Need to evaluate whether we need to keep the values between -1 and 1
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
             data = self.scaler.transform(df_data.values)
@@ -484,8 +580,10 @@ class Dataset_OBD_ADMA(Dataset):
             seq_y = self.data_y[r_begin:r_end]
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
-
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        return seq_x, seq_y, seq_x_mark, seq_y_mark  #mark is the time features. x is the input and y is supposed to be the prediction output.
+        """In our case x is the input sequence length 100
+        y length is 30. It cosists of label length (25) and prediction length 5.
+        So the decoder will have last 25 parts of the input sequence for prediction"""
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1

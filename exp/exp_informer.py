@@ -1,4 +1,4 @@
-from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_OBD_ADMA
+from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_OBD_ADMA, predictionDataset_OBD_ADMA
 from exp.exp_basic import Exp_Basic
 from models.model import Informer, InformerStack
 
@@ -78,7 +78,10 @@ class Exp_Informer(Exp_Basic):
             shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
         elif flag=='pred':
             shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.detail_freq
-            Data = Dataset_Pred
+            if args.data=='OBD_ADMA':
+                Data = predictionDataset_OBD_ADMA
+            else:
+                Data = Dataset_Pred
         else:
             shuffle_flag = True; drop_last = True; batch_size = args.batch_size; freq=args.freq
         data_set = Data(

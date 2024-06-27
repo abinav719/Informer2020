@@ -5,7 +5,8 @@ import torch
 from exp.exp_informer import Exp_Informer
 
 # ADMA-OBD dataset code
-# --model informer --data OBD_ADMA --data_path Informer_dataset_file_firstversion.csv --root_path ./data/OBD_ADMA/ --attn prob --freq L
+# Training:--model informer --data OBD_ADMA --data_path Informer_dataset_file_firstversion.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS
+#Test:--model informer --data OBD_ADMA --data_path Informer_dataset_file_firstversion.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS --do_predict True
 
 # --model informer --data ETTm1 --attn prob --freq t
 
@@ -49,7 +50,7 @@ parser.add_argument('--mix', action='store_false', help='use mix attention in ge
 parser.add_argument('--cols', type=str, nargs='+', help='certain cols from the data files as the input features')
 parser.add_argument('--num_workers', type=int, default=0, help='data loader num workers')
 parser.add_argument('--itr', type=int, default=1, help='experiments times') #Before it was twice
-parser.add_argument('--train_epochs', type=int, default=6, help='train epochs')
+parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
 parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
 parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
@@ -83,8 +84,9 @@ data_parser = {
     'ECL':{'data':'ECL.csv','T':'MT_320','M':[321,321,321],'S':[1,1,1],'MS':[321,321,1]},
     'Solar':{'data':'solar_AL.csv','T':'POWER_136','M':[137,137,137],'S':[1,1,1],'MS':[137,137,1]},
     'OBD_ADMA':{'data':'Informer_dataset_file_firstversion.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
-                'M':[7,7,7],'S':[1,1,1],'MS':[7,7,1]},
+                'M':[10,10,10],'S':[1,1,1],'MS':[10,10,1]},
 }
+#
 if args.data in data_parser.keys():
     data_info = data_parser[args.data]
     args.data_path = data_info['data']
@@ -94,6 +96,10 @@ if args.data in data_parser.keys():
 args.s_layers = [int(s_l) for s_l in args.s_layers.replace(' ','').split(',')]
 args.detail_freq = args.freq
 args.freq = args.freq[-1:]
+if args.data == 'OBD_ADMA': #Implementation for our custom model input
+    args.seq_len=100
+    args.label_len=25
+    args.pred_len=5
 
 print('Args in experiment:')
 print(args)

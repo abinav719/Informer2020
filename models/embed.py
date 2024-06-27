@@ -4,25 +4,32 @@ import torch.nn.functional as F
 
 import math
 
+"""The positional embedding gives the positional embedding for our input sequence.
+Input sequence length: 96, d_model = 512
+Positional encoding matrix would be 96X512
+register buffer is used to stop backpropagation
+"""
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super(PositionalEmbedding, self).__init__()
         # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model).float()
         pe.require_grad = False
-
         position = torch.arange(0, max_len).float().unsqueeze(1)
         div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
-
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-
         pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.register_buffer('pe', pe)#Kind of keeping them as buffer parameters. It wont be part of model.parameters() and optimizer wont update it
 
     def forward(self, x):
-        return self.pe[:, :x.size(1)]
+        return self.pe[:, :x.size(1)] #from x.size(1) extracting the size of input sequence.
 
+"""This token embedding is converting the input multivariative features into the model dimensions
+Let the input features be of 10. 
+1d convolutional filter is 2dimensional. The size is 3(time dimension)X10(feature dimension). we employ 512 filters to make it 100X512.
+Then it employs d-model number of 1d convolutional filters with size 3 to upproject it into d-model dimension which is 512
+These convolutional filters are learnt during the training."""
 class TokenEmbedding(nn.Module):
     def __init__(self, c_in, d_model):
         super(TokenEmbedding, self).__init__()
@@ -56,6 +63,7 @@ class FixedEmbedding(nn.Module):
     def forward(self, x):
         return self.emb(x).detach()
 
+
 class TemporalEmbedding(nn.Module):
     def __init__(self, d_model, embed_type='fixed', freq='h'):
         super(TemporalEmbedding, self).__init__()
@@ -73,15 +81,15 @@ class TemporalEmbedding(nn.Module):
     
     def forward(self, x):
         x = x.long()
-        
         minute_x = self.minute_embed(x[:,:,4]) if hasattr(self, 'minute_embed') else 0.
         hour_x = self.hour_embed(x[:,:,3])
         weekday_x = self.weekday_embed(x[:,:,2])
         day_x = self.day_embed(x[:,:,1])
         month_x = self.month_embed(x[:,:,0])
-        
         return hour_x + weekday_x + day_x + month_x + minute_x
 
+"""This temporal embedding is converting the time features into model dimension size of 512
+It does this by doing a linear layer of time features dimension to 512 model dimension"""
 class TimeFeatureEmbedding(nn.Module):
     def __init__(self, d_model, embed_type='timeF', freq='h'):
         super(TimeFeatureEmbedding, self).__init__()
@@ -96,14 +104,11 @@ class TimeFeatureEmbedding(nn.Module):
 class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding, self).__init__()
-
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
         self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq) if embed_type!='timeF' else TimeFeatureEmbedding(d_model=d_model, embed_type=embed_type, freq=freq)
-
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, x_mark):
         x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark)
-        
         return self.dropout(x)
