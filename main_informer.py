@@ -84,7 +84,7 @@ data_parser = {
     'ECL':{'data':'ECL.csv','T':'MT_320','M':[321,321,321],'S':[1,1,1],'MS':[321,321,1]},
     'Solar':{'data':'solar_AL.csv','T':'POWER_136','M':[137,137,137],'S':[1,1,1],'MS':[137,137,1]},
     'OBD_ADMA':{'data':'Informer_dataset_file_firstversion.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
-                'M':[10,10,10],'S':[1,1,1],'MS':[10,10,1]},
+                'M':[10,10,10],'S':[1,1,1],'MS':[9,9,1]},
 }
 #
 if args.data in data_parser.keys():

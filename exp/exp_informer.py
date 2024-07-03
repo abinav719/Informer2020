@@ -198,7 +198,13 @@ class Exp_Informer(Exp_Basic):
 
     def test(self, setting):
         test_data, test_loader = self._get_data(flag='test')
-        
+
+        #Use this block if u want to load best model and load results (comment out three lines)
+        #Be careful with inverse scaler as datasets should be same on which this model was trained
+        #path = os.path.join(self.args.checkpoints, setting)
+        #best_model_path = path + '/' + 'checkpoint.pth'
+        #self.model.load_state_dict(torch.load(best_model_path))
+
         self.model.eval()
         
         preds = []
@@ -207,8 +213,11 @@ class Exp_Informer(Exp_Basic):
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(test_loader):
             pred, true = self._process_one_batch(
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            preds.append(pred.detach().cpu().numpy())
-            trues.append(true.detach().cpu().numpy())
+            #This part of the code was modified to reproject the data back to slip angles (inversion of the conversion process)
+            true_rescaled = test_data.inverse_transform((true[:, :, -1])).unsqueeze(-1) #modified
+            pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1) #modified
+            preds.append(pred_rescaled.detach().cpu().numpy())
+            trues.append(true_rescaled.detach().cpu().numpy())
 
         preds = np.array(preds)
         trues = np.array(trues)
@@ -261,8 +270,15 @@ class Exp_Informer(Exp_Basic):
         return
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
-        batch_x = batch_x.float().to(self.device)
-        batch_y = batch_y.float()
+
+        if self.args.data == "OBD_ADMA": #Removing slip angle from the history
+            batch_x = batch_x[:,:,:-1].float().to(self.device)
+            batch_y_with_slip = batch_y.clone()
+            batch_y_with_slip = batch_y_with_slip.float()
+            batch_y = batch_y[:,:,:-1].float()
+        else:
+            batch_x = batch_x.float().to(self.device)
+            batch_y = batch_y.float()
 
         batch_x_mark = batch_x_mark.float().to(self.device)
         batch_y_mark = batch_y_mark.float().to(self.device)
@@ -272,6 +288,7 @@ class Exp_Informer(Exp_Basic):
             dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
         elif self.args.padding==1:
             dec_inp = torch.ones([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
+        #decoder embeddings are concatenated with 0 for the prediction length
         dec_inp = torch.cat([batch_y[:,:self.args.label_len,:], dec_inp], dim=1).float().to(self.device)
         # encoder - decoder
         if self.args.use_amp:
@@ -285,9 +302,15 @@ class Exp_Informer(Exp_Basic):
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
             else:
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-        if self.args.inverse:
+        if self.args.inverse: #Inverse of the scaler transform
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0
-        batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
-
+        if self.args.data == "OBD_ADMA":
+            batch_y = batch_y_with_slip[:,-self.args.pred_len:,f_dim:].to(self.device)
+        else:
+            batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
         return outputs, batch_y
+
+#The dataset object contains the statistics of the entire dataset and the scaler transform carried out in it
+#we can use it to inverse the scaler transform and get actual values.
+#This is implemented for test function.

@@ -30,7 +30,7 @@ class ConvLayer(nn.Module):
 
 #Encoder layer consists of attention followed by two convolutions and layer normalizations
 #The convolutions are happening in the feature layer. (In transformers it was a fully connected network which makes features for next key,query,value pair)
-#Here convolutions is doing the job
+#Here convolutions is doing the job.
 class EncoderLayer(nn.Module):
     def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
         super(EncoderLayer, self).__init__()

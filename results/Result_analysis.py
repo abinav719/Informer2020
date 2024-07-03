@@ -7,8 +7,8 @@ import os
 file ="informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0"
 data_pred = np.load(f'./{file}/pred.npy')
 data_true = np.load(f'./{file}/true.npy')
-pred_first_elements = data_pred[:, 0, 0]
-true_first_elements = data_true[:, 0, 0]
+pred_first_elements = data_pred[:, 0, :]
+true_first_elements = data_true[:, 0, :]
 
 abs_diff = np.abs(pred_first_elements - true_first_elements)
 bin_edges = np.arange(0, np.max(true_first_elements) + 0.25, 0.25)
@@ -33,7 +33,7 @@ plt.ylabel('Mean Absolute Error')
 plt.title('Mean Absolute Error between prediction vs correvit slip for 0.25 bins')
 plt.grid(True)
 plt.show()
-
+plt.close()
 
 
 # Plot histogram with bins of 0.5 degrees
@@ -49,6 +49,7 @@ plt.grid(True)
 for i in range(len(hist)):
     plt.text(bin_edges[i], hist_percent[i] + 0.5, f'{hist_percent[i]:.1f}%', ha='center')
 plt.show()
+plt.close()
 
 
 # Plot true vs. predicted values

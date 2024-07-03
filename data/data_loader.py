@@ -479,7 +479,9 @@ class predictionDataset_OBD_ADMA(Dataset):
             seq_y = self.data_y[r_begin:r_end]
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
-        return seq_x, seq_y, seq_x_mark, seq_y_mark #mark is the time features. x is the input and y is supposed to be the prediction output
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        #Mark is the time features. X is the input and Y is supposed to be the prediction output.
+
 
     def __len__(self):
         return len(self.data_x) - self.seq_len + 1
