@@ -99,7 +99,7 @@ args.freq = args.freq[-1:]
 if args.data == 'OBD_ADMA': #Implementation for our custom model input
     args.seq_len=100
     args.label_len=25
-    args.pred_len=5
+    args.pred_len=5 #5
 
 print('Args in experiment:')
 print(args)

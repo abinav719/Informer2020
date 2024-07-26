@@ -4,10 +4,15 @@ from models.model import Informer, InformerStack
 
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
+import io
+from PIL import Image
+from thop import profile, clever_format
+
 
 import numpy as np
-
+import matplotlib.pyplot as plt
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
@@ -21,6 +26,7 @@ warnings.filterwarnings('ignore')
 class Exp_Informer(Exp_Basic):
     def __init__(self, args):
         super(Exp_Informer, self).__init__(args)
+        self.writer = SummaryWriter()
     
     def _build_model(self):
         model_dict = {
@@ -130,7 +136,7 @@ class Exp_Informer(Exp_Basic):
         train_data, train_loader = self._get_data(flag = 'train')
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
-
+        train_iters = 0  #Variable created for logging.
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
             os.makedirs(path)
@@ -146,19 +152,23 @@ class Exp_Informer(Exp_Basic):
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
 
+        total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f'Total parameters: {total_params}')
+
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
-            
             self.model.train()
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
-                
+
                 model_optim.zero_grad()
                 pred, true = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
                 loss = criterion(pred, true)
+                self.writer.add_scalar('Loss/train',float(loss.item()),train_iters)
+                train_iters +=1
                 train_loss.append(loss.item())
                 
                 if (i+1) % 100==0:
@@ -180,7 +190,10 @@ class Exp_Informer(Exp_Basic):
             print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
+            self.writer.add_scalar('Loss/val', float(vali_loss), epoch+1)
             test_loss = self.vali(test_data, test_loader, criterion)
+            self.writer.add_scalar('Loss/test', float(test_loss), epoch+1)
+            self.test_visualize(epoch)  #This is for logging images to tensorboard.
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
@@ -193,10 +206,11 @@ class Exp_Informer(Exp_Basic):
             
         best_model_path = path+'/'+'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
-        
+        self.writer.flush()
+        self.writer.close()
         return self.model
 
-    def test(self, setting):
+    def test_visualize(self, epoch):
         test_data, test_loader = self._get_data(flag='test')
 
         #Use this block if u want to load best model and load results (comment out three lines)
@@ -226,17 +240,70 @@ class Exp_Informer(Exp_Basic):
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
 
-        # result save
-        folder_path = './results/' + setting +'/'
+        #Visualization in tensorboard
+        pred_first_elements = preds[:, 0 , :]
+        true_first_elements = trues[:, 0 , :]
+        plt.figure(figsize=(10, 6))
+        plt.plot(true_first_elements, label='Ground truth', color="g")
+        plt.plot(pred_first_elements, label='Informer prediction', color="b")
+        plt.xlabel('Time stamps')
+        plt.ylabel('Slip angle in degrees')
+        plt.title('True vs Informer vehicle slip angle prediction')
+        plt.legend()
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        plt.close()
+        buf.seek(0)
+        image = Image.open(buf)
+        image = np.array(image)
+        self.writer.add_image("Test-data-visualize", image,  global_step=epoch+1,dataformats='HWC')
+        plt.close()
+
+        return
+
+    def test(self, setting):
+        test_data, test_loader = self._get_data(flag='test')
+        # Use this block if u want to load best model and load results (comment out three lines)
+        # Be careful with inverse scaler as datasets should be same on which this model was trained
+        # path = os.path.join(self.args.checkpoints, setting)
+        # best_model_path = path + '/' + 'checkpoint.pth'
+        # self.model.load_state_dict(torch.load(best_model_path))
+        self.model.eval()
+
+        preds = []
+        trues = []
+        start_time = time.time()
+        for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            pred, true = self._process_one_batch(
+                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+            # This part of the code was modified to reproject the data back to slip angles (inversion of the conversion process)
+            true_rescaled = test_data.inverse_transform((true[:, :, -1])).unsqueeze(-1)  # modified
+            pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1)  # modified
+            preds.append(pred_rescaled.detach().cpu().numpy())
+            trues.append(true_rescaled.detach().cpu().numpy())
+
+        end_time = time.time()
+        run_time = (end_time - start_time) / len(test_loader)
+        print(run_time)
+        preds = np.array(preds)
+        trues = np.array(trues)
+        print('test shape:', preds.shape, trues.shape)
+        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        print('test shape:', preds.shape, trues.shape)
+
+
+        # Result save
+        folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
 
-        np.save(folder_path+'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path+'pred.npy', preds)
-        np.save(folder_path+'true.npy', trues)
+        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(folder_path + 'pred.npy', preds)
+        np.save(folder_path + 'true.npy', trues)
 
         return
 
@@ -271,8 +338,8 @@ class Exp_Informer(Exp_Basic):
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
 
-        if self.args.data == "OBD_ADMA": #Removing slip angle from the history
-            batch_x = batch_x[:,:,:-1].float().to(self.device)
+        if self.args.data == "OBD_ADMA":
+            batch_x = batch_x[:,:,:-1].float().to(self.device) # Removing slip angle from the history
             batch_y_with_slip = batch_y.clone()
             batch_y_with_slip = batch_y_with_slip.float()
             batch_y = batch_y[:,:,:-1].float()
@@ -302,6 +369,11 @@ class Exp_Informer(Exp_Basic):
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
             else:
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+        #To compute the number of flops or operations
+        #flops, params = profile(self.model, inputs=(batch_x, batch_x_mark, dec_inp, batch_y_mark))
+        #flops, params = clever_format([flops, params], "%.3f")
+
         if self.args.inverse: #Inverse of the scaler transform
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0
@@ -312,5 +384,5 @@ class Exp_Informer(Exp_Basic):
         return outputs, batch_y
 
 #The dataset object contains the statistics of the entire dataset and the scaler transform carried out in it
-#we can use it to inverse the scaler transform and get actual values.
+#We can use it to inverse the scaler transform and get actual values.
 #This is implemented for test function.
