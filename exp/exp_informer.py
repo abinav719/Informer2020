@@ -7,6 +7,7 @@ from utils.metrics import metric
 import io
 from PIL import Image
 from thop import profile, clever_format
+from torch.distributions import StudentT
 
 
 import numpy as np
@@ -56,6 +57,7 @@ class Exp_Informer(Exp_Basic):
                 self.args.output_attention,
                 self.args.distil,
                 self.args.mix,
+                self.args.distribution,
                 self.device
             ).float()
         
@@ -115,10 +117,20 @@ class Exp_Informer(Exp_Basic):
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
-    
+
+    def student_t_nll_loss(self, input, target):
+        #df,loc,scale
+        dist = StudentT(torch.squeeze(input[:,:,0], dim=-1), torch.squeeze(input[:,:,1], dim=-1), torch.squeeze(input[:,:,2], dim=-1))
+        nll = -dist.log_prob(torch.squeeze(target, dim=-1))
+        #if nll.mean().item() < 0:
+            #print(f"NLL mean: {nll.mean().item()}, min: {nll.min().item()}, max: {nll.max().item()}")
+        return nll.mean()
+
     def _select_criterion(self):
-        criterion =  nn.MSELoss()
-        return criterion
+        if self.args.distribution=='Student-t':
+            return lambda input, target: self.student_t_nll_loss(input,target )
+        else:
+            return nn.MSELoss()
 
     def vali(self, vali_data, vali_loader, criterion):
         self.model.eval()
@@ -133,6 +145,7 @@ class Exp_Informer(Exp_Basic):
         return total_loss
 
     def train(self, setting):
+        torch.autograd.set_detect_anomaly(True)
         train_data, train_loader = self._get_data(flag = 'train')
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
@@ -162,10 +175,8 @@ class Exp_Informer(Exp_Basic):
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
-
                 model_optim.zero_grad()
-                pred, true = self._process_one_batch(
-                    train_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+                pred, true = self._process_one_batch(train_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
                 loss = criterion(pred, true)
                 self.writer.add_scalar('Loss/train',float(loss.item()),train_iters)
                 train_iters +=1
@@ -225,11 +236,13 @@ class Exp_Informer(Exp_Basic):
         trues = []
         
         for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(test_loader):
-            pred, true = self._process_one_batch(
-                test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+            pred, true = self._process_one_batch(test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             #This part of the code was modified to reproject the data back to slip angles (inversion of the conversion process)
             true_rescaled = test_data.inverse_transform((true[:, :, -1])).unsqueeze(-1) #modified
-            pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1) #modified
+            if self.args.distribution == 'Student-t':
+                pred_rescaled = test_data.inverse_transform((pred[:, :, 1])).unsqueeze(-1) #modified
+            else:
+                pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1)
             preds.append(pred_rescaled.detach().cpu().numpy())
             trues.append(true_rescaled.detach().cpu().numpy())
 
@@ -265,20 +278,27 @@ class Exp_Informer(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         # Use this block if u want to load best model and load results (comment out three lines)
         # Be careful with inverse scaler as datasets should be same on which this model was trained
-        # path = os.path.join(self.args.checkpoints, setting)
-        # best_model_path = path + '/' + 'checkpoint.pth'
-        # self.model.load_state_dict(torch.load(best_model_path))
+        path = os.path.join(self.args.checkpoints, setting)
+        best_model_path = path + '/' + 'checkpoint.pth'
+        self.model.load_state_dict(torch.load(best_model_path))
+
         self.model.eval()
 
         preds = []
         trues = []
+        variance = []
         start_time = time.time()
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             pred, true = self._process_one_batch(
                 test_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
             # This part of the code was modified to reproject the data back to slip angles (inversion of the conversion process)
             true_rescaled = test_data.inverse_transform((true[:, :, -1])).unsqueeze(-1)  # modified
-            pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1)  # modified
+            if self.args.distribution == 'Student-t':
+                pred_rescaled = test_data.inverse_transform((pred[:, :, 1])).unsqueeze(-1)
+                variance_rescaled = ((pred[:,:,2]*pred[:,:,2])*(pred[:,:,0]/(pred[:,:,0] - 2)) * (6.73920/.96210)).unsqueeze(-1)
+                variance.append(variance_rescaled.detach().cpu().numpy())
+            else:
+                pred_rescaled = test_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1)  # modified
             preds.append(pred_rescaled.detach().cpu().numpy())
             trues.append(true_rescaled.detach().cpu().numpy())
 
@@ -287,24 +307,28 @@ class Exp_Informer(Exp_Basic):
         print(run_time)
         preds = np.array(preds)
         trues = np.array(trues)
+        if self.args.distribution == 'Student-t':
+            variance = np.array(variance)
+            variance = variance.reshape(-1, variance.shape[-2], variance.shape[-1])
         print('test shape:', preds.shape, trues.shape)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
 
 
-        # Result save
+        #Result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}'.format(mse, mae))
+        mae, mse, rmse, mape, mspe, max_ae= metric(preds, trues)
+        print('mse:{}, mae:{},max_ae:{}'.format(mse, mae,max_ae))
 
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)
-
+        if self.args.distribution == 'Student-t':
+            np.save(folder_path + 'variance_pred.npy', variance)
         return
 
     def predict(self, setting, load=False):
@@ -374,7 +398,7 @@ class Exp_Informer(Exp_Basic):
         #flops, params = profile(self.model, inputs=(batch_x, batch_x_mark, dec_inp, batch_y_mark))
         #flops, params = clever_format([flops, params], "%.3f")
 
-        if self.args.inverse: #Inverse of the scaler transform
+        if self.args.inverse: #Inverse of the scaler transform (need to check for probablistic forecasting)
             outputs = dataset_object.inverse_transform(outputs)
         f_dim = -1 if self.args.features=='MS' else 0
         if self.args.data == "OBD_ADMA":

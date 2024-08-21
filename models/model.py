@@ -12,7 +12,7 @@ class Informer(nn.Module):
     def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len, 
                 factor=5, d_model=512, n_heads=8, e_layers=3, d_layers=2, d_ff=512, 
                 dropout=0.0, attn='prob', embed='fixed', freq='h', activation='gelu', 
-                output_attention = False, distil=True, mix=True,
+                output_attention = False, distil=True, mix=True, distribution = None,
                 device=torch.device('cuda:0')):
         super(Informer, self).__init__()
         self.pred_len = out_len
@@ -62,17 +62,53 @@ class Informer(nn.Module):
         )
         # self.end_conv1 = nn.Conv1d(in_channels=label_len+out_len, out_channels=out_len, kernel_size=1, bias=True)
         # self.end_conv2 = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=True)
-        self.projection = nn.Linear(d_model, c_out, bias=True)
+        if distribution != 'None' and c_out ==1:
+            self.projection = self.probablistic_decoder_head(distribution,d_model,c_out)
+        else:
+            self.projection = nn.Linear(d_model, c_out, bias=True)
+        self.distribution = distribution
+    def probablistic_decoder_head(self,distribution,d_model,c_out):
+        if distribution == 'Student-t':
+            return nn.Linear(d_model,3,bias=True)
+        else: #Gaussian distribution
+            return nn.Linear(d_model,2,bias=True)
         
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+
+    @staticmethod
+    def squareplus(x: torch.Tensor) -> torch.Tensor:
+        r"""
+        Helper to map inputs to the positive orthant by applying the square-plus operation. Reference:
+        https://twitter.com/jon_barron/status/1387167648669048833
+        """
+        return (x + torch.sqrt(torch.square(x) + 4.0)) / 2.0
+
+    def student_t_converter(self,output):
+        #Output of the student_t_distribution is in the order of df, loc, scale.
+        df = output[:, :, 0]
+        loc = output[:, :, 1]
+        scale = output[:, :, 2]
+
+        # Apply squareplus and other transformations without in-place operations
+        df = 2.0 + self.squareplus(df)
+        scale = self.squareplus(scale).clamp_min(torch.finfo(scale.dtype).eps)
+        #loc remains unmodified.
+
+        output = torch.stack((df, loc, scale), dim=-1)
+        return output
+
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
         enc_out = self.enc_embedding(x_enc, x_mark_enc) #x_enc is the dataset column values and x_mark_enc is the temporal values for the data series
         #token(value) embeddings, temporal embeddings and position embeddings are added together.
         enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
         dec_out = self.dec_embedding(x_dec, x_mark_dec) #refers to the data embedding block.
         dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
-        dec_out = self.projection(dec_out)
-        
+        if self.distribution == 'Student-t':
+            dec_out = self.projection(dec_out)
+            dec_out = self.student_t_converter(dec_out)
+            #This is the corrected output such that df and scale are always positive and scale is not zero
+        else:
+            dec_out = self.projection(dec_out)
         # dec_out = self.end_conv1(dec_out)
         # dec_out = self.end_conv2(dec_out.transpose(2,1)).transpose(1,2)
         if self.output_attention:

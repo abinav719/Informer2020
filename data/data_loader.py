@@ -393,7 +393,7 @@ class Dataset_Pred(Dataset):
 
 class predictionDataset_OBD_ADMA(Dataset):
     def __init__(self, root_path, flag='pred', size=None,
-                 features='S', data_path='Informer_dataset_file_firstversion.csv',
+                 features='S', data_path='Informer_dataset_file_fivehourdataset.csv',
                  target='OT', scale=True, inverse=False, timeenc=0, freq='s', cols=None):
         # size [seq_len, label_len, pred_len]
         if size == None:
@@ -433,6 +433,8 @@ class predictionDataset_OBD_ADMA(Dataset):
             cols.remove(self.target);
             cols.remove('INSTimestamp_ADMA')
             cols.remove('INS_time_sec') #Need to be removed as its duplicate of INStimestamp adma but in secs
+            cols.remove('side_slip_angle_COG')
+
         df_raw = df_raw[['INSTimestamp_ADMA'] + cols + [self.target]]
 
         border1 = len(df_raw) - self.seq_len
@@ -491,7 +493,7 @@ class predictionDataset_OBD_ADMA(Dataset):
 
 class Dataset_OBD_ADMA(Dataset):
     def __init__(self, root_path, flag='train', size=None,
-                 features='S', data_path='Informer_dataset_file_firstversion.csv',
+                 features='S', data_path='Informer_dataset_file_fivehourdataset.csv',
                  target='OT', scale=True, inverse=False, timeenc=0, freq='s', cols=None):
         # size [seq_len, label_len, pred_len]
         if size == None:
@@ -530,14 +532,25 @@ class Dataset_OBD_ADMA(Dataset):
             cols = self.cols.copy()
             cols.remove(self.target)
         else:
-            cols = list(df_raw.columns);
-            cols.remove(self.target);
+            cols = list(df_raw.columns)
+            cols.remove(self.target)
             cols.remove('INSTimestamp_ADMA')
-            cols.remove('INS_time_sec') #Need to be removed as its duplicate of INStimestamp adma but in secs
+            cols.remove('side_slip_angle_COG')
+            cols.remove('INS_time_sec')#Need to be removed as its duplicate of INStimestamp adma but in secs
+
+        # adding noise in test dataset
+        noise_level = 0
+        start_idx = int(0.8 * len(df_raw))
+        for column in df_raw.columns:
+            if column not in ['Correvit_slip_angle_COG_corrvittiltcorrected', 'INSTimestamp_ADMA']:
+                df_raw.loc[start_idx:, column] = df_raw.loc[start_idx:, column] + np.random.normal(0, noise_level,
+                                                                                                       len(df_raw) - start_idx)
         df_raw = df_raw[['INSTimestamp_ADMA'] + cols + [self.target]]
 
         num_train = int(len(df_raw) * 0.7)
         num_test = int(len(df_raw) * 0.2)
+        #num_test = int(len(df_raw) * 0.1725) Domain shift
+
         num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, num_train + num_vali - self.seq_len] #Need to change this
         border2s = [num_train, num_train + num_vali, len(df_raw)]
@@ -553,7 +566,10 @@ class Dataset_OBD_ADMA(Dataset):
         if self.scale: #Need to evaluate whether we need to keep the values between -1 and 1
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
+            original_variance = np.var(df_data.values, axis=0)
             data = self.scaler.transform(df_data.values)
+            scaled_variance = np.var(data, axis=0)
+
         else:
             data = df_data.values
 

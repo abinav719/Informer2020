@@ -11,6 +11,9 @@ def CORR(pred, true):
 def MAE(pred, true):
     return np.mean(np.abs(pred-true))
 
+def Max_absolute_error(pred,true):
+    return np.max(np.abs(pred-true))
+
 def MSE(pred, true):
     return np.mean((pred-true)**2)
 
@@ -29,5 +32,6 @@ def metric(pred, true):
     rmse = RMSE(pred, true)
     mape = MAPE(pred, true)
     mspe = MSPE(pred, true)
+    max_ae = Max_absolute_error(pred,true)
     
-    return mae,mse,rmse,mape,mspe
+    return mae,mse,rmse,mape,mspe,max_ae

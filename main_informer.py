@@ -7,7 +7,7 @@ from exp.exp_informer import Exp_Informer
 # ADMA-OBD dataset code
 # Training:--model informer --data OBD_ADMA --data_path Informer_dataset_file_firstversion.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS
 #Test:--model informer --data OBD_ADMA --data_path Informer_dataset_file_firstversion.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS --do_predict True
-
+#--model informer --data OBD_ADMA --data_path Informer_dataset_file_fivehourdataset.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS --distribution Student-t --test_setting fivehours
 # --model informer --data ETTm1 --attn prob --freq t
 
 parser = argparse.ArgumentParser(description='[Informer] Long Sequences Forecasting')
@@ -50,8 +50,8 @@ parser.add_argument('--mix', action='store_false', help='use mix attention in ge
 parser.add_argument('--cols', type=str, nargs='+', help='certain cols from the data files as the input features')
 parser.add_argument('--num_workers', type=int, default=0, help='data loader num workers')
 parser.add_argument('--itr', type=int, default=1, help='experiments times') #Before it was twice
-parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
-parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+parser.add_argument('--train_epochs', type=int, default=20, help='train epochs')
+parser.add_argument('--batch_size', type=int, default=128, help='batch size of train input data') #default 32
 parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
 parser.add_argument('--des', type=str, default='test',help='exp description')
@@ -64,6 +64,8 @@ parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
 parser.add_argument('--gpu', type=int, default=0, help='gpu')
 parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
 parser.add_argument('--devices', type=str, default='0,1,2,3',help='device ids of multile gpus')
+parser.add_argument('--distribution',type=str ,default='None', help="Distribution for the probablistic forecasting mechanism")
+parser.add_argument('--test_setting',type=str ,default='None', help="Domain adaptation or normal")
 
 args = parser.parse_args()
 
@@ -83,7 +85,7 @@ data_parser = {
     'WTH':{'data':'WTH.csv','T':'WetBulbCelsius','M':[12,12,12],'S':[1,1,1],'MS':[12,12,1]},
     'ECL':{'data':'ECL.csv','T':'MT_320','M':[321,321,321],'S':[1,1,1],'MS':[321,321,1]},
     'Solar':{'data':'solar_AL.csv','T':'POWER_136','M':[137,137,137],'S':[1,1,1],'MS':[137,137,1]},
-    'OBD_ADMA':{'data':'Informer_dataset_file_firstversion.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
+    'OBD_ADMA':{'data':'Informer_dataset_file_fivehourdataset.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
                 'M':[10,10,10],'S':[1,1,1],'MS':[9,9,1]},
 }
 #
@@ -108,14 +110,14 @@ Exp = Exp_Informer #Need to understand this part as this is the main import
 
 for ii in range(args.itr):
     # setting record of experiments
-    setting = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_at{}_fc{}_eb{}_dt{}_mx{}_{}_{}'.format(args.model, args.data, args.features, 
+    setting = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_at{}_fc{}_eb{}_dt{}_mx{}_{}_{}_Uncertainty={}_{}'.format(args.model, args.data, args.features,
                 args.seq_len, args.label_len, args.pred_len,
                 args.d_model, args.n_heads, args.e_layers, args.d_layers, args.d_ff, args.attn, args.factor, 
-                args.embed, args.distil, args.mix, args.des, ii)
+                args.embed, args.distil, args.mix, args.des, ii, args.distribution,args.test_setting)
 
     exp = Exp(args) # set experiments
     print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-    exp.train(setting)
+    #exp.train(setting)
     
     print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
     exp.test(setting)
