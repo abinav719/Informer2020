@@ -12,7 +12,7 @@ from scipy.signal import correlate
 from pandas.tseries.frequencies import to_offset
 
 
-dataset = pd.read_csv(f"data/OBD_ADMA/SingleTrack_configureADMA+OBD_synced.csv")
+dataset = pd.read_csv(f"data/OBD_ADMA/SingleTrack_configureADMA+OBD_synced_new.csv")
 print(dataset.shape)
 #dataset = dataset.iloc[75000:-5000]
 print(dataset.shape)
@@ -124,6 +124,52 @@ plt.show()
 
 #Vehicle dynamic parameters optimize
 dataset["SW_pos_obd"] = dataset['SW_pos_obd'].ffill()
+dataset["yaw_rate"] = dataset['yaw_rate'].ffill()
+dataset["speedo_obd"] = dataset["speedo_obd"].ffill()
+dataset["VelFR_obd"] = dataset["VelFR_obd"].ffill()
+dataset["VelFL_obd"] = dataset["VelFL_obd"].ffill()
+dataset["VelRR_obd"] = dataset["VelRR_obd"].ffill()
+dataset["VelRL_obd"] = dataset["VelRL_obd"].ffill()
+dataset["LatAcc_obd"] = dataset["LatAcc_obd"].ffill()
+
+
+#Check whether you have the right obd decoder
+plt.figure(figsize=(8, 5))  # Set the figure size
+# Adjust bins and colors as needed
+plt.plot(dataset["acc_hor_y"]*-9.81,color="blue",label="adma_lat_acc")
+plt.plot(dataset["LatAcc_obd"],color="green",label="lat_acc")
+plt.legend()
+plt.xlabel('Time')
+plt.ylabel('lat acceleration comparision')
+plt.title('checker plot')
+plt.show()
+plt.close()
+
+plt.figure(figsize=(8, 5))  # Set the figure size
+plt.plot(dataset["yaw_rate"],color="green",label="yaw_rate") # Adjust bins and colors as needed
+plt.plot(dataset["rate_hor_z"],color="blue",label="Adma_yaw_rate")
+plt.legend()
+plt.xlabel('Time')
+plt.ylabel('yaw rate comparision')
+plt.title('checker plot')
+plt.show()
+plt.close()
+
+plt.figure(figsize=(8, 5))  # Set the figure size
+ # Adjust bins and colors as needed
+plt.plot(dataset["VelFR_obd"],color="red",label="FR_tire speed")
+plt.plot(dataset["VelFL_obd"],color="orange",label="FL_tire speed")
+plt.plot(dataset["VelRR_obd"],color="blue",label="RR_tire speed")
+plt.plot(dataset["VelRL_obd"],color="black",label="RL_tire speed")
+plt.plot(dataset["INS_totalvelCOG_hor"]*3.6,color="green",label="speedo speed")
+plt.legend()
+plt.xlabel('Time')
+plt.ylabel('Tire speeds')
+plt.title('checker plot')
+plt.show()
+plt.close()
+
+
 
 """Trouble shoot formula and signs
 """

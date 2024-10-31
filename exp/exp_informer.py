@@ -85,7 +85,7 @@ class Exp_Informer(Exp_Basic):
         if flag == 'test':
             shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq
         elif flag=='pred':
-            shuffle_flag = False; drop_last = False; batch_size = 1; freq=args.detail_freq
+            shuffle_flag = False; drop_last = True; batch_size = args.batch_size; freq=args.freq #args.detail_freq
             if args.data=='OBD_ADMA':
                 Data = predictionDataset_OBD_ADMA
             else:
@@ -331,6 +331,7 @@ class Exp_Informer(Exp_Basic):
             np.save(folder_path + 'variance_pred.npy', variance)
         return
 
+
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
         
@@ -342,22 +343,47 @@ class Exp_Informer(Exp_Basic):
         self.model.eval()
         
         preds = []
-        
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(pred_loader):
+        trues = []
+        variance = []
+        start_time = time.time()
+        for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(pred_loader):
             pred, true = self._process_one_batch(
                 pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            preds.append(pred.detach().cpu().numpy())
-
+            # This part of the code was modified to reproject the data back to slip angles (inversion of the conversion process)
+            true_rescaled = pred_data.inverse_transform((true[:, :, -1])).unsqueeze(-1)  # modified
+            if self.args.distribution == 'Student-t':
+                pred_rescaled = pred_data.inverse_transform((pred[:, :, 1])).unsqueeze(-1)
+                variance_rescaled = ((pred[:,:,2]*pred[:,:,2])*(pred[:,:,0]/(pred[:,:,0] - 2)) * (6.73920/.96210)).unsqueeze(-1)
+                variance.append(variance_rescaled.detach().cpu().numpy())
+            else:
+                pred_rescaled = pred_data.inverse_transform((pred[:, :, -1])).unsqueeze(-1)  # modified
+            preds.append(pred_rescaled.detach().cpu().numpy())
+            trues.append(true_rescaled.detach().cpu().numpy())
+        end_time = time.time()
+        run_time = (end_time - start_time) / len(pred_loader)
+        print(run_time)
         preds = np.array(preds)
+        trues = np.array(trues)
+        if self.args.distribution == 'Student-t':
+            variance = np.array(variance)
+            variance = variance.reshape(-1, variance.shape[-2], variance.shape[-1])
+        print('fusion train val shape:', preds.shape, trues.shape)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        
-        # result save
-        folder_path = './results/' + setting +'/'
+        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        print('fusion train val shape:', preds.shape, trues.shape)
+
+        # Result save
+        folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-        
-        np.save(folder_path+'real_prediction.npy', preds)
-        
+
+        mae, mse, rmse, mape, mspe, max_ae = metric(preds, trues)
+        print('mse:{}, mae:{},max_ae:{}'.format(mse, mae, max_ae))
+
+        np.save(folder_path + 'fusion_dataset_pred.npy', preds)
+        np.save(folder_path + 'fusion_dataset_true.npy', trues)
+        if self.args.distribution == 'Student-t':
+            np.save(folder_path + 'fusion_dataset_variance_pred.npy', variance)
         return
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):

@@ -436,9 +436,11 @@ class predictionDataset_OBD_ADMA(Dataset):
             cols.remove('side_slip_angle_COG')
 
         df_raw = df_raw[['INSTimestamp_ADMA'] + cols + [self.target]]
-
-        border1 = len(df_raw) - self.seq_len
-        border2 = len(df_raw)
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1 = 0
+        border2 = num_train + num_vali
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
@@ -452,13 +454,9 @@ class predictionDataset_OBD_ADMA(Dataset):
         else:
             data = df_data.values
 
-        tmp_stamp = df_raw[['INSTimestamp_ADMA']][border1:border2]
-        tmp_stamp['INSTimestamp_ADMA'] = pd.to_datetime(tmp_stamp.INSTimestamp_ADMA)
-        pred_dates = pd.date_range(tmp_stamp.INSTimestamp_ADMA.values[-1], periods=self.pred_len + 1, freq=self.freq)
-        #need to check this
-        df_stamp = pd.DataFrame(columns=['date'])
-        df_stamp.date = list(tmp_stamp.INSTimestamp_ADMA.values) + list(pred_dates[1:])
-        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq[-1:])
+        df_stamp = df_raw[['INSTimestamp_ADMA']][border1:border2]
+        df_stamp['INSTimestamp_ADMA'] = pd.to_datetime(df_stamp.INSTimestamp_ADMA)
+        data_stamp = time_features(df_stamp, timeenc=self.timeenc, freq=self.freq)
 
         self.data_x = data[border1:border2]
         if self.inverse:
@@ -539,12 +537,12 @@ class Dataset_OBD_ADMA(Dataset):
             cols.remove('INS_time_sec')#Need to be removed as its duplicate of INStimestamp adma but in secs
 
         # adding noise in test dataset
-        noise_level = 0
-        start_idx = int(0.8 * len(df_raw))
-        for column in df_raw.columns:
-            if column not in ['Correvit_slip_angle_COG_corrvittiltcorrected', 'INSTimestamp_ADMA']:
-                df_raw.loc[start_idx:, column] = df_raw.loc[start_idx:, column] + np.random.normal(0, noise_level,
-                                                                                                       len(df_raw) - start_idx)
+        #noise_level = 0
+        #start_idx = int(0.8 * len(df_raw))
+        #for column in df_raw.columns:
+            #if column not in ['Correvit_slip_angle_COG_corrvittiltcorrected', 'INSTimestamp_ADMA']:
+                #df_raw.loc[start_idx:, column] = df_raw.loc[start_idx:, column] + np.random.normal(0, noise_level,
+                                                                                                   #    len(df_raw) - start_idx)
         df_raw = df_raw[['INSTimestamp_ADMA'] + cols + [self.target]]
 
         num_train = int(len(df_raw) * 0.7)

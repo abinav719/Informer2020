@@ -5,12 +5,12 @@ from numpy.linalg import inv
 
 #Values for linear single model with constant velocity
 i_s = 22 #based on internet and used as the same for KMB-1
-c_alpha_f = 80000#80000  #Botsch values
+c_alpha_f = 80000 #80000  #Botsch values
 c_alpha_r = 100000#100000 #Botsch values
 m = 1050 #Internet based weight 975. Plus our weight and some extra allowance for sensors
 lf = 1.0732
 lr = 0.7998
-I_z = 1900#1900 #Botsch values
+I_z = 1500#1900 #Botsch values
 
 vel = 0
 T = 0.02

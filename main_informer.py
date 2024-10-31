@@ -10,6 +10,8 @@ from exp.exp_informer import Exp_Informer
 #--model informer --data OBD_ADMA --data_path Informer_dataset_file_fivehourdataset.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS --distribution Student-t --test_setting fivehours
 # --model informer --data ETTm1 --attn prob --freq t
 
+# --model informer --data OBD_ADMA --data_path Informer_dataset_file_fivehourdataset_new.csv --root_path ./data/OBD_ADMA/ --attn prob --freq l --features MS --distribution Student-t --test_setting fivehours_new
+
 parser = argparse.ArgumentParser(description='[Informer] Long Sequences Forecasting')
 
 parser.add_argument('--model', type=str, required=True, default='informer',help='model of experiment, options: [informer, informerstack, informerlight(TBD)]')
@@ -52,7 +54,7 @@ parser.add_argument('--num_workers', type=int, default=0, help='data loader num 
 parser.add_argument('--itr', type=int, default=1, help='experiments times') #Before it was twice
 parser.add_argument('--train_epochs', type=int, default=20, help='train epochs')
 parser.add_argument('--batch_size', type=int, default=128, help='batch size of train input data') #default 32
-parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
+parser.add_argument('--patience', type=int, default=5, help='early stopping patience')
 parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
 parser.add_argument('--des', type=str, default='test',help='exp description')
 parser.add_argument('--loss', type=str, default='mse',help='loss function')
@@ -85,10 +87,10 @@ data_parser = {
     'WTH':{'data':'WTH.csv','T':'WetBulbCelsius','M':[12,12,12],'S':[1,1,1],'MS':[12,12,1]},
     'ECL':{'data':'ECL.csv','T':'MT_320','M':[321,321,321],'S':[1,1,1],'MS':[321,321,1]},
     'Solar':{'data':'solar_AL.csv','T':'POWER_136','M':[137,137,137],'S':[1,1,1],'MS':[137,137,1]},
-    'OBD_ADMA':{'data':'Informer_dataset_file_fivehourdataset.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
+    'OBD_ADMA':{'data':'Informer_dataset_file_fivehourdataset_new.csv','T':'Correvit_slip_angle_COG_corrvittiltcorrected',
                 'M':[10,10,10],'S':[1,1,1],'MS':[9,9,1]},
 }
-#
+
 if args.data in data_parser.keys():
     data_info = data_parser[args.data]
     args.data_path = data_info['data']
@@ -101,7 +103,7 @@ args.freq = args.freq[-1:]
 if args.data == 'OBD_ADMA': #Implementation for our custom model input
     args.seq_len=100
     args.label_len=25
-    args.pred_len=5 #5
+    args.pred_len=5
 
 print('Args in experiment:')
 print(args)
@@ -120,8 +122,8 @@ for ii in range(args.itr):
     #exp.train(setting)
     
     print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-    exp.test(setting)
-
+    #exp.test(setting)
+    exp.predict(setting, True)
     if args.do_predict:
         print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.predict(setting, True)

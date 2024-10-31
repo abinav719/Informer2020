@@ -17,10 +17,11 @@ from scipy.signal import butter, filtfilt
 #file = "results/informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0_Uncertainty=None_fivehours"
 #Student t distribution
 #file = "results/informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0_Student-t"
-file = "results/informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0_Uncertainty=Student-t_fivehours"
-
+#file = "results/informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0_Uncertainty=Student-t_fivehours"
+file = "results/informer_OBD_ADMA_ftMS_sl100_ll25_pl5_dm512_nh8_el2_dl1_df2048_atprob_fc5_ebtimeF_dtTrue_mxTrue_test_0_Uncertainty=Student-t_fivehours_new"
 #dataset - domainadapt or fivehourdataset
-dataset = pd.read_csv("data/OBD_ADMA/Informer_dataset_file_fivehourdataset.csv")
+#dataset = pd.read_csv("data/OBD_ADMA/Informer_dataset_file_fivehourdataset.csv")
+dataset = pd.read_csv("data/OBD_ADMA/Informer_dataset_file_fivehourdataset_new.csv")
 
 data_pred = np.load(f'./{file}/pred.npy')
 data_true = np.load(f'./{file}/true.npy')
@@ -36,7 +37,8 @@ true_first_elements = data_true[:, 0, :]
 variance_first_elements = data_variance[:, 0, :]
 """Check this code block whether things are matching"""
 #Now we extract the test dataset from the dataset to compare things like obd based slip angle
-dataset = dataset[-len(pred_first_elements)-30:-30] #-30 here seems right and matches with dataloaders
+#This is an important step, true informer and correvit slip corrected should match with each other.
+dataset = dataset[-len(pred_first_elements)-68:-68] #-30 here seems right and matches with dataloaders
 
 #Still there might be some mismatch between the two due to some padding in the time series (check it here)
 index = np.where(true_first_elements[:] == dataset["Correvit_slip_angle_COG_corrvittiltcorrected"].iloc[0])[0].item()
@@ -103,7 +105,7 @@ plt.show()
 plt.close()
 
 #These plots are made to analyse the error between predicted yaw rate vs actual yaw rate to generate confidence for KMB-1
-condition =  ((dataset['speedo_obd'] <= 20) & ( dataset["LatAcc_obd"].abs() >= 3))
+condition =  ((dataset['speedo_obd'] <= 200) & ( dataset["LatAcc_obd"].abs() <= 30))
 abs_diff_kmb_yaw = (dataset.loc[condition,'Yaw_rate_kmb1'] - dataset.loc[condition,'yaw_rate']).abs()
 bin_edges = np.arange(0, 15+ 0.25, 0.25)
 bin_indices = np.digitize(np.abs(dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]-dataset.loc[condition,'Vehicle_slip_obd']), bins=bin_edges)
@@ -160,12 +162,12 @@ plt.close()
 # dataset['KMB_slip2'] = np.arctan((dataset['LatAcc_obd']/ ((dataset['speedo_obd']/3.6) * ((dataset['yaw_rate']*np.pi)/180))))*(180/np.pi)
 
 
-#Caculating slip angle based on yaw rate and vehicle dimensions (lh= 799, lv= 1074, l= 1873) failure
-mask_speedyaw = dataset['speedo_obd']>5 & dataset['yaw_rate'].notna() & dataset['LatAcc_obd'].notna() & (dataset['yaw_rate'].abs() > 2)
-dataset.loc[mask_speedyaw,'speed_y'] =  (-1*(dataset.loc[mask_speedyaw,'yaw_rate'])*(np.pi/180)*((1.074*0.799)/1.873))*3.6
-dataset.loc[mask_speedyaw,'speed_x'] = np.sqrt(dataset.loc[mask_speedyaw, 'speedo_obd']**2 - dataset.loc[mask_speedyaw, 'speed_y']**2)
-dataset.loc[mask_speedyaw,'KMB_slip3'] = ((np.arctan(dataset.loc[mask_speedyaw,'speed_y']/dataset.loc[mask_speedyaw,'speed_x'])*(180/np.pi)))
-dataset.loc[~mask_speedyaw,'KMB_slip3'] = 0
+# #Caculating slip angle based on yaw rate and vehicle dimensions (lh= 799, lv= 1074, l= 1873) failure
+# mask_speedyaw = dataset['speedo_obd']>5 & dataset['yaw_rate'].notna() & dataset['LatAcc_obd'].notna() & (dataset['yaw_rate'].abs() > 2)
+# dataset.loc[mask_speedyaw,'speed_y'] =  (-1*(dataset.loc[mask_speedyaw,'yaw_rate'])*(np.pi/180)*((1.074*0.799)/1.873))*3.6
+# dataset.loc[mask_speedyaw,'speed_x'] = np.sqrt(dataset.loc[mask_speedyaw, 'speedo_obd']**2 - dataset.loc[mask_speedyaw, 'speed_y']**2)
+# dataset.loc[mask_speedyaw,'KMB_slip3'] = ((np.arctan(dataset.loc[mask_speedyaw,'speed_y']/dataset.loc[mask_speedyaw,'speed_x'])*(180/np.pi)))
+# dataset.loc[~mask_speedyaw,'KMB_slip3'] = 0
 
 #Tire velocities ( This model is working well :))
 mask_speedyaw = dataset['speedo_obd']>5
@@ -201,30 +203,31 @@ def bicycle_model(params, data):
     #Params to be optimized
     c_alpha_f, c_alpha_r, I_z = params
 
-    vel = data["speedo_obd"]/3.6#data["ins_vel_frame_COG_x"]
-    correvit_slip = data["Correvit_slip_angle_COG_corrvittiltcorrected"] * np.pi/180
-    psi_dot_meas = -1*data["yaw_rate"]* np.pi/180
-    steering =  data["SW_pos_obd"] * (np.pi / 180) / i_s
+    vel = pd.Series(data["speedo_obd"]/3.6) #data["ins_vel_frame_COG_x"]
+    correvit_slip = pd.Series(data["Correvit_slip_angle_COG_corrvittiltcorrected"] * np.pi/180)
+    psi_dot_meas = pd.Series(-1*data["yaw_rate"]* np.pi/180)
+    steering =  pd.Series(data["SW_pos_obd"] * (np.pi / 180) / i_s)
 
-    slip_pred = np.zeros_like(correvit_slip)
-    psi_dot_pred = np.zeros_like(psi_dot_meas)
+    slip_pred = pd.Series(np.zeros_like(correvit_slip))
+    psi_dot_pred = pd.Series(np.zeros_like(psi_dot_meas))
 
+ #   for i in range(1,len(correvit_slip)):
     # Initialize arrays to store the model predictions
-    mask_vel = vel > 2
-    slip_pred[mask_vel] = (correvit_slip[mask_vel] - (((c_alpha_f + c_alpha_r) / (m * vel[mask_vel])) * T) * correvit_slip[mask_vel] +
-                        (((c_alpha_r * lr - c_alpha_f * lf) / (m * vel[mask_vel] * vel[mask_vel])) - 1) * T * psi_dot_meas[mask_vel] + (
-                            c_alpha_f / (m * vel[mask_vel])) * T * steering[mask_vel])
-    psi_dot_pred[mask_vel]  = ((c_alpha_r * lr - c_alpha_f * lf) / I_z) * T * correvit_slip[mask_vel] + psi_dot_meas[mask_vel] - (
-                ((c_alpha_f * lf * lf + c_alpha_r * lr * lr) / (I_z * vel[mask_vel])) * T) * psi_dot_meas[mask_vel] + (
-                               c_alpha_f * lf / I_z) * T * steering[mask_vel]
+  #      mask_vel = vel > 2
+   #     slip_pred.iloc[i] = (slip_pred.iloc[i-1] - (((c_alpha_f + c_alpha_r) / (m * vel.iloc[i-1])) * T) * slip_pred.iloc[i-1]  +
+ #                       (((c_alpha_r * lr - c_alpha_f * lf) / (m * vel.iloc[i-1] * vel.iloc[i-1])) - 1) * T * psi_dot_meas.iloc[i-1] + (
+   #                         c_alpha_f / (m * vel.iloc[i-1])) * T * steering.iloc[i-1])
+  #      psi_dot_pred.iloc[i]  = ((c_alpha_r * lr - c_alpha_f * lf) / I_z) * T * slip_pred.iloc[i-1]+ psi_dot_meas.iloc[i-1] - (
+  #              ((c_alpha_f * lf * lf + c_alpha_r * lr * lr) / (I_z * vel.iloc[i-1])) * T) * psi_dot_meas.iloc[i-1] + (
+  #                             c_alpha_f * lf / I_z) * T * steering.iloc[i-1]
     return slip_pred*(180/np.pi), psi_dot_pred*(180/np.pi)
 
-params = [40000,63321,1500]
-dataset['KMB_3'],random_variable = bicycle_model(params,dataset)
+#params = [40000,63321,1500]
+#dataset['KMB_3'],random_variable = bicycle_model(params,dataset)
 
 print("kmb2",((dataset.loc[condition, 'KMB_slip2'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean())
 print("kmb2 butter worth",((dataset.loc[condition, 'KMB_slip2_fitler'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean())
-print("kmb3",((dataset.loc[condition, 'KMB_3'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean())
+#print("kmb3",((dataset.loc[condition, 'KMB_3'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean())
 plt.figure(figsize=(10, 6))
 plt.plot(dataset['KMB_slip2'],label="kmb slip 2")
 plt.plot(dataset['Correvit_slip_angle_COG_corrvittiltcorrected'],label='GT - Correvit')
@@ -232,6 +235,7 @@ plt.plot(dataset['KMB_slip2_fitler'],label='kmb slip 2 butter worth')
 plt.legend()
 plt.show()
 plt.close()
+
 
 #Kalman filter for tire velocities - KMB-2:
 x_n_1 = np.array([[np.float(dataset['Correvit_slip_angle_COG_corrvittiltcorrected'].iloc[0])* np.pi / 180],
@@ -242,7 +246,7 @@ kalman_variance = [0]
 for i in range(len(dataset)-1):
     i=i+1
     #y_n = np.array([[np.float(dataset["KMB_slip2"].iloc[i])*np.pi/180],[np.float(dataset['yaw_rate'].iloc[i]*np.pi/180)]])
-    y_n = np.array([[np.float(dataset['KMB_slip2'].iloc[i]) * np.pi / 180], [np.float(dataset['yaw_rate'].iloc[i] * np.pi / 180)]])
+    y_n = np.array([[np.float(dataset["KMB_slip2"].iloc[i]) * np.pi / 180], [np.float(dataset['yaw_rate'].iloc[i] * np.pi / 180)]])
     u_n_1 = np.array([[(np.float(dataset["SW_pos_obd"].iloc[i-1])*np.pi)/(i_s*180)],[0]])
     if dataset['speedo_obd'].iloc[i-1]<1:
         matrix_a, matrix_b = state_matrix(1)
@@ -290,7 +294,7 @@ plt.legend()
 plt.show()
 plt.close()
 
-condition =  ((dataset['speedo_obd'] <= 20) & ( dataset["LatAcc_obd"].abs() <= 3))
+condition =  ((dataset['speedo_obd'] <= 200) & ( dataset["LatAcc_obd"].abs() <= 30))
 abs_variance_kmb2_kalman = dataset.loc[condition,"kalman_slip_kmb2_variance"]
 bin_edges = np.arange(0, 15+ 0.25, 0.25)
 bin_indices = np.digitize(np.abs(dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]-dataset.loc[condition,'kalman_slip_kmb2']), bins=bin_edges)
@@ -339,6 +343,7 @@ plt.close()
 
 
 #Computing fusion block with uncertainty from the model
+print("fusion-1")
 for i in range(len(dataset)):
     variance = np.sqrt(dataset["variance_informer"].iloc[i])
     if variance > 0.25:
@@ -347,7 +352,7 @@ for i in range(len(dataset)):
             variance = 1
         # dataset["fused_slip"].iloc[i] = (dataset['Vehicle_slip_obd'].iloc[i] * variance + dataset["fused_slip"].iloc[i] * (1 - variance))
 
-    if variance > 0.25:
+    if variance > 0.05:
         if dataset["speedo_obd"].iloc[i] < 20 and dataset["LatAcc_obd"].iloc[i] < 3:
             dataset["fused_slip"].iloc[i] = (dataset['Vehicle_slip_obd'].iloc[i] * variance + dataset["fused_slip"].iloc[i] * (1 - variance))
         elif dataset["speedo_obd"].iloc[i] < 20 and dataset["LatAcc_obd"].iloc[i] >= 3 and np.abs(dataset["pred_informer"].iloc[i]) < 5:
@@ -364,27 +369,43 @@ for i in range(len(dataset)):
         dataset["fused_slip"].iloc[i] = 0
         dataset["Vehicle_slip_obd"].iloc[i] = 0
 
-variance_kmb2_uncertainty = []
+data_fusion_rows = []
+#y_pred_original = pd.read_csv("y_pred_original.csv")
+y_pred_original = pd.read_csv("y_pred_original_trained_on_train.csv")
+best_fusion_list = y_pred_original.squeeze().tolist()
 #Fusion 2 architecture
+
+print("fusion-2")
 for i in range(len(dataset)):
     variance = np.sqrt(dataset["variance_informer"].iloc[i])
-    if variance > 0.25:
-        if variance > 1.5:
-            #dataset["variance_informer"].iloc[i] = 1 # just for making plotting easy
-            variance = 1.5
-        # dataset["fused_slip"].iloc[i] = (dataset['Vehicle_slip_obd'].iloc[i] * variance + dataset["fused_slip"].iloc[i] * (1 - variance))
-
-    if variance > 0.25:
-        x = (np.abs(dataset['Yaw_rate_kmb1'].iloc[i] - dataset['yaw_rate'].iloc[i]))/100
-        y = dataset["kalman_slip_kmb2_variance"].iloc[i]/1e6
-        z = variance
-        dataset["fused_slip_2"].iloc[i] = ((x*y*z)/(y*x+x*z+y*z))*((1/x)*dataset["Vehicle_slip_obd"].iloc[i]+(1/y)*dataset['KMB_slip2'].iloc[i]+(1/z)*dataset["fused_slip_2"].iloc[i])
-
-    #Reducing the velocity to zero
     if dataset["speedo_obd"].iloc[i] < 2:
         dataset["fused_slip_2"].iloc[i] = 0
         dataset["Vehicle_slip_obd"].iloc[i] = 0
+        continue
+    # if variance > 0.05:
+    #     if variance > 1.5:
+    #         #dataset["variance_informer"].iloc[i] = 1 # just for making plotting easy
+    #         variance = 1.5
+    #     # dataset["fused_slip"].iloc[i] = (dataset['Vehicle_slip_obd'].iloc[i] * variance + dataset["fused_slip"].iloc[i] * (1 - variance))
 
+    if variance >= 0.00:
+        x = (np.abs(dataset['Yaw_rate_kmb1'].iloc[i] - dataset['yaw_rate'].iloc[i]))
+        y = (dataset["kalman_slip_kmb2_variance"].iloc[i]/1e6)
+        z = variance
+        if x== 0 or y== 0 or z == 0:
+            continue
+        else:
+            dataset["fused_slip_2"].iloc[i] = ((x*y*z)/(y*x+x*z+y*z))*((1/x)*dataset["Vehicle_slip_obd"].iloc[i]+(1/y)*dataset['kalman_slip_kmb2'].iloc[i]+(1/z)*dataset["fused_slip_2"].iloc[i])
+            data_fusion_rows.append({'kmb_1_var': x, 'kmb_2_var': y, 'informer_var': z, 'kmb_1_val':dataset["Vehicle_slip_obd"].iloc[i] ,'kmb_2_val':dataset['kalman_slip_kmb2'].iloc[i] , 'informer_val': dataset["pred_informer"].iloc[i], 'true_val':dataset['Correvit_slip_angle_COG_corrvittiltcorrected'].iloc[i] })
+            dataset["fused_slip_2"].iloc[i] = best_fusion_list.pop(0)
+
+    #Reducing the velocity to zero
+    else:
+        print('check')
+
+# Convert list of rows to DataFrame
+data_fusion_2 = pd.DataFrame(data_fusion_rows)
+data_fusion_2.to_csv("data_fusion_2_test.csv", index=False)
 plt.figure(figsize=(10, 6))
 plt.plot(dataset["fused_slip_2"], label='fused slip2')
 plt.plot(dataset["fused_slip"], label='fused slip1')
@@ -400,9 +421,11 @@ fused_values = ((dataset.loc[condition, 'fused_slip'] - dataset.loc[condition,'C
 slip_values_kmb2 = ((dataset.loc[condition, 'KMB_slip2'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean()
 slip_values_kmb2_kalman = ((dataset.loc[condition, 'kalman_slip_kmb2'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean()
 slip_values_fused_2 = ((dataset.loc[condition, 'fused_slip_2'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).mean()
+slip_values_fused_2_max = ((dataset.loc[condition, 'fused_slip_2'] - dataset.loc[condition,'Correvit_slip_angle_COG_corrvittiltcorrected']).abs()).max()
 print('Informer - mean', informer_values)
 print('fused - mean', fused_values)
 print('fused 2 - mean', slip_values_fused_2)
+print('fused 2 - max', slip_values_fused_2_max)
 print('KMB - mean ', slip_values)
 print('KMB 2 - mean ', slip_values_kmb2)
 print('KMB 2- mean kalman', slip_values_kmb2_kalman)
@@ -415,8 +438,9 @@ abs_diff_informer = (dataset.loc[condition,"pred_informer"] - dataset.loc[condit
 abs_diff_kmb = (dataset.loc[condition,"Vehicle_slip_obd"] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
 abs_diff_kmb_2 = (dataset.loc[condition,"KMB_slip2"] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
 abs_diff_kmb_2_kalman = (dataset.loc[condition,'kalman_slip_kmb2'] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
-abs_diff_kmb_2_kalman = (dataset.loc[condition,'KMB_3'] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
+#abs_diff_kmb_2_kalman = (dataset.loc[condition,'KMB_3'] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
 abs_diff_fused_slip = (dataset.loc[condition,"fused_slip"] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
+abs_diff_fused_slip_2 = (dataset.loc[condition,"fused_slip_2"] - dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"]).abs()
 bin_edges = np.arange(dataset["Correvit_slip_angle_COG_corrvittiltcorrected"].min(), dataset["Correvit_slip_angle_COG_corrvittiltcorrected"].max() + 0.25, 0.25)
 bin_indices = np.digitize(dataset.loc[condition,"Correvit_slip_angle_COG_corrvittiltcorrected"], bins=bin_edges)
 
@@ -437,6 +461,7 @@ mean_abs_error_per_bin_kmb_2 = []
 mean_abs_error_per_bin_kmb_2_kalman = []
 #mean_abs_error_per_bin_regression = []
 mean_abs_error_per_bin_fused_slip = []
+mean_abs_error_per_bin_fused_slip_2 = []
 bin_centers = []
 
 for i in range(1, len(bin_edges)):
@@ -448,6 +473,7 @@ for i in range(1, len(bin_edges)):
         mean_abs_error_kmb_2_kalman = np.mean(abs_diff_kmb_2_kalman[bin_mask])
         #mean_abs_error_regression = np.mean(abs_diff_regression_df[bin_mask])
         mean_abs_error_fused_slip = np.mean(abs_diff_fused_slip[bin_mask])
+        mean_abs_error_fused_slip_2 = np.mean(abs_diff_fused_slip_2[bin_mask])
 
         mean_abs_error_per_bin_informer.append(mean_abs_error_informer)
         mean_abs_error_per_bin_kmb.append(mean_abs_error_kmb)
@@ -455,6 +481,7 @@ for i in range(1, len(bin_edges)):
         mean_abs_error_per_bin_kmb_2_kalman.append(mean_abs_error_kmb_2_kalman)
         #mean_abs_error_per_bin_regression.append(mean_abs_error_regression)
         mean_abs_error_per_bin_fused_slip.append(mean_abs_error_fused_slip)
+        mean_abs_error_per_bin_fused_slip_2.append(mean_abs_error_fused_slip_2)
         bin_centers.append((bin_edges[i-1] + bin_edges[i]) / 2)
 
 # Plot the mean absolute error for each bin
@@ -464,6 +491,7 @@ plt.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  la
 plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB2 Tire MAE')
 plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB2 Tire MAE kalman')
 plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fused slip MAE')
+plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fused slip 2 MAE')
 plt.xlabel('Correvit vehicle slip angle (degrees)')
 plt.ylabel('Mean Absolute Error (MAE)')
 plt.title('Mean Absolute Error between prediction vs correvit slip for 0.25 bins')
@@ -472,6 +500,7 @@ plt.legend()
 plt.show()
 plt.close()
 
+
 ########Percentage########
 mean_abs_error_per_bin_informer = []
 mean_abs_error_per_bin_kmb = []
@@ -479,6 +508,7 @@ mean_abs_error_per_bin_kmb_2 = []
 mean_abs_error_per_bin_kmb_2_kalman = []
 mean_abs_error_per_bin_regression = []
 mean_abs_error_per_bin_fused_slip = []
+mean_abs_error_per_bin_fused_slip_2 = []
 bin_centers = []
 bin_counts = []
 
@@ -491,12 +521,14 @@ for i in range(1, len(bin_edges)):
         mean_abs_error_kmb_2_kalman = np.mean(abs_diff_kmb_2_kalman[bin_mask])
         #mean_abs_error_regression = np.mean(abs_diff_regression_df[bin_mask])
         mean_abs_error_fused_slip = np.mean(abs_diff_fused_slip[bin_mask])
+        mean_abs_error_fused_slip_2 = np.mean(abs_diff_fused_slip_2[bin_mask])
 
         mean_abs_error_per_bin_informer.append(mean_abs_error_informer)
         mean_abs_error_per_bin_kmb.append(mean_abs_error_kmb)
         mean_abs_error_per_bin_kmb_2.append(mean_abs_error_kmb_2)
         #mean_abs_error_per_bin_regression.append(mean_abs_error_regression)
         mean_abs_error_per_bin_fused_slip.append(mean_abs_error_fused_slip)
+        mean_abs_error_per_bin_fused_slip_2.append(mean_abs_error_fused_slip_2)
         mean_abs_error_per_bin_kmb_2_kalman.append(mean_abs_error_kmb_2_kalman)
         bin_centers.append((bin_edges[i-1] + bin_edges[i]) / 2)
         bin_counts.append(np.sum(bin_mask))  # Number of data points in each bin
@@ -509,7 +541,7 @@ ax1.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  la
 ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB2 MAE')
 #ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB2 Kalman Filter')
 ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fused slip MAE')
-
+ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fused slip 2 MAE')
 ax1.set_xlabel('ADMA Vehicle slip angle COG vehicle slip angle (degrees)')
 ax1.set_ylabel('Mean Absolute Error (MAE)')
 ax1.set_title('Mean Absolute Error between prediction vs adma slip for 0.25 bins')
@@ -527,7 +559,6 @@ ax2.set_ylim(0, max((bin_counts/sum(bin_counts))*100)+5)  # Adjust the ylim for 
 # Add legend for the histogram
 ax2.legend(loc='upper right')
 plt.show()
-
 ######################################################################################################################
 #Plot histogram with bins of 0.5 degrees
 bins = np.arange(0, np.max(abs_diff_informer) + 0.1, 0.1)
