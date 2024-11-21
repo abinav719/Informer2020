@@ -371,7 +371,7 @@ for i in range(len(dataset)):
 
 data_fusion_rows = []
 #y_pred_original = pd.read_csv("y_pred_original.csv")
-y_pred_original = pd.read_csv("y_pred_original_trained_on_train.csv")
+y_pred_original = pd.read_csv("y_pred_original_trained_on_train_best.csv")
 best_fusion_list = y_pred_original.squeeze().tolist()
 #Fusion 2 architecture
 
@@ -395,7 +395,7 @@ for i in range(len(dataset)):
         if x== 0 or y== 0 or z == 0:
             continue
         else:
-            dataset["fused_slip_2"].iloc[i] = ((x*y*z)/(y*x+x*z+y*z))*((1/x)*dataset["Vehicle_slip_obd"].iloc[i]+(1/y)*dataset['kalman_slip_kmb2'].iloc[i]+(1/z)*dataset["fused_slip_2"].iloc[i])
+            #dataset["fused_slip_2"].iloc[i] = ((x*y*z)/(y*x+x*z+y*z))*((1/x)*dataset["Vehicle_slip_obd"].iloc[i]+(1/y)*dataset['kalman_slip_kmb2'].iloc[i]+(1/z)*dataset["fused_slip_2"].iloc[i])
             data_fusion_rows.append({'kmb_1_var': x, 'kmb_2_var': y, 'informer_var': z, 'kmb_1_val':dataset["Vehicle_slip_obd"].iloc[i] ,'kmb_2_val':dataset['kalman_slip_kmb2'].iloc[i] , 'informer_val': dataset["pred_informer"].iloc[i], 'true_val':dataset['Correvit_slip_angle_COG_corrvittiltcorrected'].iloc[i] })
             dataset["fused_slip_2"].iloc[i] = best_fusion_list.pop(0)
 
@@ -486,14 +486,14 @@ for i in range(1, len(bin_edges)):
 
 # Plot the mean absolute error for each bin
 plt.figure(figsize=(10, 6))
-plt.plot(bin_centers, mean_abs_error_per_bin_informer, marker='o', linestyle='-', label='Informer MAE')
-plt.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  label='KMB MAE')
-plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB2 Tire MAE')
-plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB2 Tire MAE kalman')
-plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fused slip MAE')
-plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fused slip 2 MAE')
+plt.plot(bin_centers, mean_abs_error_per_bin_informer, marker='o', linestyle='-', label='Informer')
+plt.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  label='KMB1')
+plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB2')
+plt.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB2 with KF')
+plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fusion 1')
+plt.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fusion 2')
 plt.xlabel('Correvit vehicle slip angle (degrees)')
-plt.ylabel('Mean Absolute Error (MAE)')
+plt.ylabel('Mean Absolute Error (MAE) in degrees')
 plt.title('Mean Absolute Error between prediction vs correvit slip for 0.25 bins')
 plt.grid(True)
 plt.legend()
@@ -535,29 +535,33 @@ for i in range(1, len(bin_edges)):
 
 # Plot the mean absolute error for each bin
 fig, ax1 = plt.subplots(figsize=(10, 6))
-
-ax1.plot(bin_centers, mean_abs_error_per_bin_informer, marker='o', linestyle='-', label='Informer MAE')
-ax1.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  label='KMB MAE')
-ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB2 MAE')
-#ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB2 Kalman Filter')
-ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fused slip MAE')
-ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fused slip 2 MAE')
-ax1.set_xlabel('ADMA Vehicle slip angle COG vehicle slip angle (degrees)')
-ax1.set_ylabel('Mean Absolute Error (MAE)')
-ax1.set_title('Mean Absolute Error between prediction vs adma slip for 0.25 bins')
-ax1.grid(True)
-ax1.legend(loc='upper left')
+plt.rcParams.update({'font.size': 14})
+ax1.plot(bin_centers, mean_abs_error_per_bin_informer, marker='o', linestyle='-', label='Informer')
+ax1.plot(bin_centers, mean_abs_error_per_bin_kmb, marker='o', linestyle='-',  label='KMB-1')
+#ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2, marker='o', linestyle='-',  label='KMB-2')
+ax1.plot(bin_centers, mean_abs_error_per_bin_kmb_2_kalman, marker='o', linestyle='-',  label='KMB-2')
+ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip, marker='o', linestyle='-',  label='Fusion 1')
+ax1.plot(bin_centers, mean_abs_error_per_bin_fused_slip_2, marker='o', linestyle='-',  label='Fusion 2')
+ax1.set_xlabel('Correvit vehicle slip angle in degrees',fontsize=16)
+ax1.set_ylabel('Mean Absolute Error (MAE) in degrees',fontsize=16)
+ax1.set_title('Performance of Virtual sensor models from OBD data',fontsize=16)
+ax1.set_ylim(0, 2)
+ax1.grid(False)
+ax1.tick_params(axis='both', labelsize=14)
+ax1.legend(loc='upper left',fontsize=14)
 
 # Create a twin axis for the histogram
 ax2 = ax1.twinx()
 
 # Plot the histogram data as a bar plot on the twin axis
 ax2.bar(bin_centers, (bin_counts/sum(bin_counts))*100, width=0.25, color='gray', alpha=0.5, label='Data count per bin')
-ax2.set_ylabel('Data Percentage in bin')
+ax2.set_ylabel('Data Percentage in bin',fontsize=16)
 ax2.set_ylim(0, max((bin_counts/sum(bin_counts))*100)+5)  # Adjust the ylim for better visualization
 
 # Add legend for the histogram
-ax2.legend(loc='upper right')
+ax2.tick_params(axis='both', labelsize=14)
+ax2.legend(loc='upper right',fontsize=14)
+plt.savefig('high_resolution_plot_1.pdf', dpi=3000, bbox_inches='tight')
 plt.show()
 ######################################################################################################################
 #Plot histogram with bins of 0.5 degrees

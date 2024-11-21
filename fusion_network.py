@@ -1,3 +1,11 @@
+"""In the results analysis file it is not obvious.
+The entire fusion architecture is as follows:
+The main informer is run in prediction mode to extract the values for train and val (Informer values and variance)
+Then in this script the corresponding KMB1,KMB2 and its variance is computed
+This computed dataset acts as the training dataset for the neural network model for learning fusion network
+The model trained on this makes predictions on the test dataset.
+Now the testing is decoupled so the fusion_test_dataset is used to generate values.
+"""
 import pandas
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -347,7 +355,7 @@ num_epochs = 100
 
 # Early stopping variables
 best_val_loss = float('inf')
-patience = 15
+patience = 10
 trigger_times = 0
 
 num_epochs = 100
